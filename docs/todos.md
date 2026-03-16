@@ -18,6 +18,8 @@
 - [x] Canvas grid toggle + snap toggle
 - [x] Keyboard shortcuts cheat sheet modal (⌨ button, ? key, Escape to close)
 - [x] Undo / Redo (snapshot-based, debounced for drag, Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y)
+- [x] Audio / HDMI source selector — enumerates devices via mediaDevices API
+- [x] Output resolution config — wired to state, canvas border updates live
 
 ## Resources Panel
 
@@ -26,9 +28,9 @@
 - [x] Media library list with thumbnails and remove
 - [x] Resource thumbnails (image preview, video first frame)
 - [x] Drag & drop resource onto shape (auto-play on drop)
-- [x] Text resource: full modal with font, size, bold/italic, color, background (transparent option), stroke, opacity, alignment, padding, letter spacing, marquee (speed, direction, loop), live preview
+- [x] Text resource: full modal with font, size, bold/italic, color, background (transparent), stroke, opacity, alignment, padding, letter spacing, marquee (speed, direction, loop), live preview
 - [x] Color resource: modal with solid, gradient (linear/radial, angle, stops), animated (keyframes, duration, easing, loop), live preview
-- [x] Double-click text/color resources to edit (in-place update, no re-assign needed)
+- [x] Double-click text/color resources to edit (in-place update)
 
 ## Canvas
 
@@ -41,62 +43,58 @@
 - [x] Size controls: W/H with W→H / H→W buttons
 - [x] Proportional resize (Alt+drag handle, all shapes)
 - [x] Resource rendering inside shapes (sprite + mask, async texture loading)
-- [x] Video playback in shapes (ticker-based frame updates, play/pause/FPS control)
+- [x] Video playback in shapes (ticker-based, play/pause/FPS control)
 - [x] Text marquee animation (controlled by shape play state)
 - [x] Animated color resources (ticker-based)
 - [x] Ctrl+click multi-select (cyan stroke, drag moves all selected)
-- [x] Shift+click grouping (includes previously selected shape, modal on Shift release)
+- [x] Shift+click grouping (includes previously selected, modal on Shift release)
 - [x] Grid overlay (20px) + snap to grid (8px threshold)
 - [x] Z-order / layering
 - [x] Zoom: scroll wheel (0.1x–5x, towards cursor), +/− buttons
 - [x] Pan: middle-mouse, Alt+drag, ✋ mode button
-- [x] Reset view (R button)
-- [x] Floating toolbar (+, −, R, ✋)
+- [x] Reset view (R button), floating toolbar (+, −, R, ✋)
+- [x] Ghost rendering for hidden shapes (faint outline, clickable)
 
 ## Right Panel (Tabbed: Shape / Groups)
 
-- [x] Tabbed right panel with auto-switch on group select
-- [x] Shape tab: shape list when nothing selected, full options when selected
-- [x] Groups tab: group list when nothing selected, group options when selected
+- [x] Tabbed right panel with auto-switch on group/shape select
+- [x] Shape tab: shape list with visibility toggles when nothing selected
+- [x] Groups tab: group list when nothing selected
 
 ### Shape Options
 
-- [x] Name, position (X/Y), size (W/H + W→H/H→W), rotation slider, layer up/down
+- [x] Name, position, size (W→H/H→W), rotation slider, layer up/down, visibility toggle
 - [x] Individual point positions (non-circle)
 - [x] Resource assignment (dropdown + drag & drop + badge with clear)
-- [x] Projection types:
-  - [x] Default (stretch to bounding box)
-  - [x] Fit (aspect ratio, centered)
-  - [x] Masked (natural size window, visual positioning modal with zoom/pan/scale)
+- [x] Projector assignment (1-4, for multi-projector support)
+- [x] Projection types: default (stretch), fit (aspect ratio), masked (visual positioning modal)
+- [x] Mask positioning modal: full-screen, zoom/pan/scale controls, drag resource
 - [x] Playback: play/pause, FPS slider, loop, ignore global play/pause
-- [x] BPM sync toggle (UI done)
+- [x] BPM sync toggle (UI)
 - [x] Effects with PixiJS filters: blur, glow, color correction, distortion, glitch
-- [x] Actions: duplicate, delete (also Delete/Backspace key)
+- [x] Actions: duplicate, delete (Delete/Backspace key)
 
 ### Group Options
 
-- [x] Group name, shape list (reorder ↑↓, remove ✕, add from dropdown)
-- [x] Click shape name to select on canvas
+- [x] Group name, shape list (reorder, remove, add, visibility toggles, show/hide all)
+- [x] Click shape name highlights on canvas (stays on groups tab)
 - [x] Group-level controls: play/pause all, FPS, loop, resource, projection type
-- [x] Group projection:
-  - [x] Masked: shared resource, all shapes shown at real positions in modal, drag resource
-  - [x] Mapped: shared resource, each shape independently draggable in modal, per-shape offsets
-  - [x] Warning when switching if shapes have different resources, first shape's resource applied to all
-- [x] Group-level effects (all sliders apply to all shapes)
-- [x] Sequence animation: series, random, from-middle modes
-- [x] Fade in/hold/fade out with configurable durations
-- [x] Loop + auto-play resource options
+- [x] Group projection: masked (all shapes in modal), mapped (per-shape drag in modal)
+- [x] Group-level effects
+- [x] Sequence animation: series, random, from-middle (pairs) modes
+- [x] Fade in/hold/fade out with configurable durations + easing
+- [x] Loop + auto-play resource + BPM mode options
 - [x] Groups persist in save/load
 
 ## Timeline
 
 - [x] Blender-style UI with ruler, tracks, playhead
 - [x] Resizable (200px–70vh, drag handle, toggle button)
-- [x] Per-shape tracks with labels (click to select)
-- [x] Show/hide shapes (◆/◇ toggle per track, hidden shapes skip rendering)
-- [x] Insert keyframe (saves position, rotation, size, points, effects)
+- [x] Per-shape tracks with labels and visibility toggles (◆/◇)
+- [x] Insert keyframe (position, rotation, size, points, effects)
 - [x] Keyframes: yellow diamonds, draggable, right-click delete
-- [x] Keyframe popover: morph toggle, easing (linear/ease-in/ease-out/ease-in-out), hold time, delete
+- [x] Keyframe popover: morph toggle, easing, hold time, transition effect, delete
+- [x] Transition effects: fade (blur), flash (glow), dissolve (glitch)
 - [x] Draggable playhead, click ruler to seek
 - [x] Play/pause/stop with looping
 - [x] Morph interpolation with easing + hold time
@@ -105,29 +103,34 @@
 
 ## External Window
 
-- [x] Separate Electron window (frameless, black)
-- [x] Renders all resource types (video, image, text, color) with masking
-- [x] All projection types (default, fit, masked, mapped)
-- [x] Independent rendering — own ticker at 60fps, no per-frame IPC
-- [x] Group animations calculated locally from synced config
-- [x] Scene rebuilt only on state changes, persistent containers for animation
+- [x] Separate Electron window(s) (frameless, black)
+- [x] Multi-projector: multiple windows, each with projector ID
+- [x] Shapes filtered by projector assignment
+- [x] All resource types and projection types supported
+- [x] Independent rendering — own ticker at 60fps
+- [x] Group animations calculated locally
+- [x] Persistent containers, scene rebuilt only on state changes
 - [x] Toggle outline / points / grid
 - [x] Auto-close when main window closes
+
+## Audio / DJ Sync
+
+- [x] Audio analyzer: Web Audio API mic input, RMS level detection
+- [x] BPM mode: audio level drives group animation timing (accumulator-based)
+- [x] MIDI sync module: device enumeration, note/CC/clock handling
+- [x] MIDI BPM detection from clock (24 PPQ)
+- [x] MIDI beat callbacks for advancing group animations
 
 ## Persistence
 
 - [x] Manual save/load via native file dialogs
 - [x] Auto-save to separate file (5s debounce, Electron userData)
 - [x] Media files persisted via `media://` protocol
-- [x] Undo/redo history, keyframes, groups all saved in config
+- [x] Undo/redo history, keyframes, groups, animation config all saved
 
-## Pending
+## Remaining
 
-- [x] Audio / HDMI source selector — enumerates devices via mediaDevices API, populates dropdowns
-- [x] Output resolution config — wired to state, canvas border updates live
-- [x] BPM mode — Web Audio API mic input, RMS level detection, drives group animation timing
-- [x] MIDI sync — Web MIDI API: device enumeration, note/CC handling, clock-based BPM, beat callbacks
-- [x] Transition effects — fade (blur), flash (glow), dissolve (glitch), selectable per keyframe
-- [ ] Beat detection — analyze audio for beat patterns, advance sequence on beat
-- [ ] Projector assignment / multi-projector (UI done)
-- [ ] MIDI integration with group animations (connect MIDI beat to sequence advance)
+- [ ] Beat detection from audio analysis (analyze for beat patterns)
+- [ ] MIDI device selector in UI
+- [ ] BPM mode threshold/sensitivity tuning UI
+- [ ] Per-shape BPM sync (individual shapes, not just groups)
