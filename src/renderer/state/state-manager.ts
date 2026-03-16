@@ -342,6 +342,15 @@ class StateManager {
 		}
 	}
 
+	advanceGroupAnimation(groupId: string): void {
+		const group = this.groups.get(groupId);
+		if (!group || !group.animationPlaying || !group.animation || !group.animation.useBpm) return;
+
+		// Advance by one cycle duration (matches the BPM cycle constant in getGroupAnimationState)
+		const cycleDuration = 1500;
+		group._bpmAccumulator = (group._bpmAccumulator ?? 0) + cycleDuration;
+	}
+
 	getGroupAnimationState(groupId: string): Map<string, number> | null {
 		const group = this.groups.get(groupId);
 		if (!group || !group.animationPlaying || !group.animation || !group.animationStartTime) return null;

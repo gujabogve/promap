@@ -10,7 +10,8 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 let mainWindow: BrowserWindow | null = null;
-let externalWindow: BrowserWindow | null = null;
+const externalWindows: Map<number, BrowserWindow> = new Map();
+let nextProjectorId = 1;
 
 function createWindow(): void {
 	mainWindow = new BrowserWindow({
@@ -34,10 +35,10 @@ function createWindow(): void {
 
 	mainWindow.on('closed', () => {
 		mainWindow = null;
-		if (externalWindow) {
-			externalWindow.close();
-			externalWindow = null;
+		for (const [, win] of externalWindows) {
+			if (!win.isDestroyed()) win.close();
 		}
+		externalWindows.clear();
 	});
 }
 
@@ -54,17 +55,20 @@ function setupProtocol(): void {
 }
 
 function setupIpc(): void {
-	ipcMain.handle('open-external-window', async () => {
-		if (externalWindow) {
-			externalWindow.focus();
-			return true;
+	ipcMain.handle('open-external-window', async (_event, projectorId?: number) => {
+		const id = projectorId ?? nextProjectorId++;
+
+		if (externalWindows.has(id)) {
+			externalWindows.get(id)!.focus();
+			return id;
 		}
 
-		externalWindow = new BrowserWindow({
+		const win = new BrowserWindow({
 			width: 1920,
 			height: 1080,
 			backgroundColor: '#000000',
 			frame: false,
+			title: `ProMap - Projector ${id}`,
 			webPreferences: {
 				preload: join(__dirname, '../preload/index.js'),
 				contextIsolation: true,
@@ -72,38 +76,55 @@ function setupIpc(): void {
 			},
 		});
 
+		const url = process.env.ELECTRON_RENDERER_URL
+			? `${process.env.ELECTRON_RENDERER_URL}/external.html?projector=${id}`
+			: join(__dirname, '../renderer/external.html');
+
 		if (process.env.ELECTRON_RENDERER_URL) {
-			externalWindow.loadURL(process.env.ELECTRON_RENDERER_URL + '/external.html');
+			win.loadURL(url);
 		} else {
-			externalWindow.loadFile(join(__dirname, '../renderer/external.html'));
+			win.loadFile(url, { query: { projector: String(id) } });
 		}
 
-		externalWindow.on('closed', () => {
-			externalWindow = null;
-			mainWindow?.webContents.send('external-window-closed');
+		win.on('closed', () => {
+			externalWindows.delete(id);
+			mainWindow?.webContents.send('external-window-closed', id);
 		});
 
-		return true;
+		externalWindows.set(id, win);
+		return id;
 	});
 
-	ipcMain.handle('close-external-window', () => {
-		if (externalWindow) {
-			externalWindow.close();
-			externalWindow = null;
+	ipcMain.handle('close-external-window', (_event, projectorId?: number) => {
+		if (projectorId !== undefined) {
+			const win = externalWindows.get(projectorId);
+			if (win && !win.isDestroyed()) win.close();
+			externalWindows.delete(projectorId);
+		} else {
+			for (const [id, win] of externalWindows) {
+				if (!win.isDestroyed()) win.close();
+				externalWindows.delete(id);
+			}
 		}
 		return true;
 	});
 
-	ipcMain.handle('is-external-window-open', () => {
-		return !!externalWindow;
+	ipcMain.handle('is-external-window-open', (_event, projectorId?: number) => {
+		if (projectorId !== undefined) return externalWindows.has(projectorId);
+		return externalWindows.size > 0;
+	});
+
+	ipcMain.handle('get-projector-list', () => {
+		return [...externalWindows.keys()];
 	});
 
 	ipcMain.on('sync-external', (_event, data: string) => {
-		if (externalWindow && !externalWindow.isDestroyed()) {
-			externalWindow.webContents.send('state-update', data);
+		for (const [, win] of externalWindows) {
+			if (!win.isDestroyed()) {
+				win.webContents.send('state-update', data);
+			}
 		}
 	});
-
 
 	ipcMain.handle('upload-media', async () => {
 		const win = getWindow();

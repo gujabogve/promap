@@ -25,6 +25,7 @@ const POINT_RADIUS = 4;
 
 class ExternalRenderer {
 	private app: Application;
+	private projectorId: number;
 	private textureCache: Map<string, Texture> = new Map();
 	private videoEntries: Map<string, { element: HTMLVideoElement; source: VideoSource; texture: Texture }> = new Map();
 	private loadingTextures: Set<string> = new Set();
@@ -36,8 +37,9 @@ class ExternalRenderer {
 	private needsRebuild = false;
 	private randomOrders: Map<string, string[]> = new Map();
 
-	constructor(app: Application) {
+	constructor(app: Application, projectorId = 1) {
 		this.app = app;
+		this.projectorId = projectorId;
 
 		this.gridContainer = new Container();
 		this.shapesLayer = new Container();
@@ -92,6 +94,8 @@ class ExternalRenderer {
 
 		for (const shape of shapes) {
 			if (shape.visible === false) continue;
+			// Filter by projector assignment
+			if (shape.projector && shape.projector !== this.projectorId) continue;
 
 			const container = new Container();
 
@@ -440,10 +444,13 @@ class ExternalRenderer {
 }
 
 async function init(): Promise<void> {
+	const params = new URLSearchParams(window.location.search);
+	const projectorId = parseInt(params.get('projector') ?? '1');
+
 	const app = new Application();
 	await app.init({ resizeTo: window, background: 0x000000, antialias: true });
 	document.body.appendChild(app.canvas);
-	new ExternalRenderer(app);
+	new ExternalRenderer(app, projectorId);
 }
 
 init();

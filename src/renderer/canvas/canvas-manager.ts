@@ -2,6 +2,7 @@ import { Application, Graphics, FederatedPointerEvent, Container, Sprite, Textur
 import { state } from '../state/state-manager';
 import { ShapeData, Point, ResourceData, TextOptions, ColorOptions } from '../types';
 import { audioAnalyzer } from '../audio/audio-analyzer';
+import { midiSync } from '../audio/midi-sync';
 
 const POINT_RADIUS = 6;
 const POINT_COLOR = 0x3b82f6;
@@ -61,6 +62,7 @@ export class CanvasManager {
 	private textEntries: Map<string, TextEntry> = new Map();
 	private colorEntries: Map<string, ColorEntry> = new Map();
 	private loadingTextures: Set<string> = new Set();
+	private removeMidiBeatListener: (() => void) | null = null;
 
 	constructor(app: Application) {
 		this.app = app;
@@ -96,6 +98,14 @@ export class CanvasManager {
 		});
 		this.setupDrop();
 
+		this.removeMidiBeatListener = midiSync.onBeat(() => {
+			for (const [groupId, group] of state.getGroups()) {
+				if (group.animationPlaying && group.animation?.useBpm) {
+					state.advanceGroupAnimation(groupId);
+				}
+			}
+		});
+
 		this.app.ticker.add(() => this.tick());
 	}
 
@@ -130,8 +140,8 @@ export class CanvasManager {
 			if (group?.animationPlaying) {
 				hasGroupAnim = true;
 
-				// Tick BPM-driven animations with audio level
-				if (group.animation?.useBpm && audioAnalyzer.running) {
+				// Tick BPM-driven animations with audio level (skip if MIDI sync is driving beats)
+				if (group.animation?.useBpm && audioAnalyzer.running && !midiSync.connected) {
 					state.tickBpmAnimation(groupId, audioAnalyzer.level);
 				}
 

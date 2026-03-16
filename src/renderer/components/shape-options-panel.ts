@@ -163,7 +163,7 @@ export class ShapeOptionsPanel extends HTMLElement {
 				<div>
 					<label class="text-xs text-neutral-400 block mb-1">Projector</label>
 					<select id="shape-projector" class="w-full px-2 py-1 text-xs bg-neutral-800 border border-neutral-600 rounded text-neutral-300">
-						<option value="1">Projector 1</option>
+						${[1, 2, 3, 4].map(n => `<option value="${n}" ${shape.projector === n ? 'selected' : ''}>Projector ${n}</option>`).join('')}
 					</select>
 				</div>
 
@@ -374,6 +374,10 @@ export class ShapeOptionsPanel extends HTMLElement {
 			update({ resource: null });
 			const shape = state.getSelectedShape();
 			if (shape) this.renderForm(shape);
+		});
+
+		this.listen('shape-projector', 'change', (el) => {
+			update({ projector: parseInt((el as HTMLSelectElement).value) });
 		});
 
 		this.listen('shape-projection-type', 'change', (el) => {
