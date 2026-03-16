@@ -204,7 +204,24 @@ When "Use BPM" is enabled on a group sequence animation:
 - Sequence order (series/random/from-middle) still applies
 - Easing still applies to fade curves
 - Loop/auto-play resource options still work
-- **Needs prototyping** — sound level to speed mapping needs tuning
+- **Implementation**: AudioAnalyzer class with RMS level detection, accumulator-based timing
+- Sound level to speed mapping: `audioLevel * 3` multiplier (needs tuning)
+
+### MIDI Sync
+
+- MidiSync class: `navigator.requestMIDIAccess()`, device enumeration
+- Handles Note On/Off, Control Change, MIDI Clock, Start/Stop messages
+- BPM detection from MIDI Clock (24 PPQ — 24 pulses per quarter note)
+- Beat callbacks for advancing animations on beat
+- Device selection support
+
+### Transition Effects (timeline keyframes)
+
+- Per-keyframe transition effect selector: none, fade, flash, dissolve
+- **Fade**: adds blur during transition, peaks at midpoint
+- **Flash**: brief glow burst at transition midpoint
+- **Dissolve**: glitch + distortion during transition, sine curve intensity
+- Effects are additive — applied on top of interpolated shape state
 
 ### Progressive sync implementation
 

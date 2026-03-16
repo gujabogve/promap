@@ -123,10 +123,11 @@
 
 ## Pending
 
-- [ ] Audio / HDMI source selector (UI done)
-- [ ] Output resolution config (UI done)
-- [ ] BPM mode — mic sound level detection (Web Audio API): threshold-based show/hide, sound level controls fade speed. Needs prototyping.
+- [x] Audio / HDMI source selector — enumerates devices via mediaDevices API, populates dropdowns
+- [x] Output resolution config — wired to state, canvas border updates live
+- [x] BPM mode — Web Audio API mic input, RMS level detection, drives group animation timing
+- [x] MIDI sync — Web MIDI API: device enumeration, note/CC handling, clock-based BPM, beat callbacks
+- [x] Transition effects — fade (blur), flash (glow), dissolve (glitch), selectable per keyframe
 - [ ] Beat detection — analyze audio for beat patterns, advance sequence on beat
 - [ ] Projector assignment / multi-projector (UI done)
-- [ ] MIDI sync (Web MIDI API)
-- [ ] Transition effects
+- [ ] MIDI integration with group animations (connect MIDI beat to sequence advance)
