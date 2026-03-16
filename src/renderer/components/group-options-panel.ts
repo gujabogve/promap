@@ -1,6 +1,7 @@
 import { state } from '../state/state-manager';
 import { ShapeData, ProjectionType, GroupAnimationOptions } from '../types';
 import { MaskPositionModal } from './mask-position-modal';
+import { audioAnalyzer } from '../audio/audio-analyzer';
 
 export class GroupOptionsPanel extends HTMLElement {
 	private currentGroupId: string | null = null;
@@ -371,13 +372,17 @@ export class GroupOptionsPanel extends HTMLElement {
 			state.setGroupAnimation(groupId, getAnimOptions());
 		});
 
-		this.querySelector('#grp-anim-play')?.addEventListener('click', () => {
-			// Save current options first
-			state.setGroupAnimation(groupId, getAnimOptions());
+		this.querySelector('#grp-anim-play')?.addEventListener('click', async () => {
+			const animOpts = getAnimOptions();
+			state.setGroupAnimation(groupId, animOpts);
 			const group = state.getGroups().get(groupId);
 			if (group?.animationPlaying) {
 				state.stopGroupAnimation(groupId);
+				if (animOpts.useBpm) audioAnalyzer.stop();
 			} else {
+				if (animOpts.useBpm && !audioAnalyzer.running) {
+					await audioAnalyzer.start(state.audioSourceId ?? undefined);
+				}
 				state.playGroupAnimation(groupId);
 			}
 			const updatedGroup = state.getSelectedGroup();

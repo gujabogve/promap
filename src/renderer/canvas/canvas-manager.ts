@@ -1,6 +1,7 @@
 import { Application, Graphics, FederatedPointerEvent, Container, Sprite, Texture, VideoSource, ImageSource, CanvasSource, BlurFilter, ColorMatrixFilter, Filter } from 'pixi.js';
 import { state } from '../state/state-manager';
 import { ShapeData, Point, ResourceData, TextOptions, ColorOptions } from '../types';
+import { audioAnalyzer } from '../audio/audio-analyzer';
 
 const POINT_RADIUS = 6;
 const POINT_COLOR = 0x3b82f6;
@@ -128,6 +129,11 @@ export class CanvasManager {
 			const group = state.getGroups().get(groupId);
 			if (group?.animationPlaying) {
 				hasGroupAnim = true;
+
+				// Tick BPM-driven animations with audio level
+				if (group.animation?.useBpm && audioAnalyzer.running) {
+					state.tickBpmAnimation(groupId, audioAnalyzer.level);
+				}
 
 				// Handle auto-play resource (mutate directly, no notify)
 				const animState = state.getGroupAnimationState(groupId);

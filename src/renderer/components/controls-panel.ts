@@ -4,10 +4,21 @@ import { ShortcutsModal } from './shortcuts-modal';
 import { canvasManager } from './canvas-panel';
 
 export class ControlsPanel extends HTMLElement {
+	private deviceRefreshTimer: ReturnType<typeof setInterval> | null = null;
+
 	connectedCallback(): void {
 		this.className = 'block h-12 bg-neutral-900 border-b border-neutral-700 px-4 shrink-0';
 		this.render();
 		this.setupListeners();
+		this.initDeviceSources();
+	}
+
+	disconnectedCallback(): void {
+		if (this.deviceRefreshTimer) {
+			clearInterval(this.deviceRefreshTimer);
+			this.deviceRefreshTimer = null;
+		}
+		window.removeEventListener('focus', this.boundRefreshDevices);
 	}
 
 	private setupListeners(): void {
@@ -53,6 +64,8 @@ export class ControlsPanel extends HTMLElement {
 			if (loaded) {
 				fpsSlider.value = String(state.globalFps);
 				fpsValue.textContent = String(state.globalFps);
+				resWidth.value = String(state.resolution.x);
+				resHeight.value = String(state.resolution.y);
 			}
 		});
 
@@ -77,6 +90,23 @@ export class ControlsPanel extends HTMLElement {
 			state.setExternalToggle('externalShowGrid', (e.target as HTMLInputElement).checked);
 		});
 
+		const resWidth = this.querySelector('#res-width') as HTMLInputElement;
+		const resHeight = this.querySelector('#res-height') as HTMLInputElement;
+
+		resWidth.addEventListener('change', () => {
+			const val = parseInt(resWidth.value);
+			if (val > 0) {
+				state.setResolution({ ...state.resolution, x: val });
+			}
+		});
+
+		resHeight.addEventListener('change', () => {
+			const val = parseInt(resHeight.value);
+			if (val > 0) {
+				state.setResolution({ ...state.resolution, y: val });
+			}
+		});
+
 		this.querySelector('#chk-canvas-grid')?.addEventListener('change', (e) => {
 			if (canvasManager) canvasManager.showGrid = (e.target as HTMLInputElement).checked;
 		});
@@ -87,6 +117,67 @@ export class ControlsPanel extends HTMLElement {
 		this.querySelector('#btn-shortcuts')?.addEventListener('click', () => {
 			(document.querySelector('shortcuts-modal') as ShortcutsModal)?.toggle();
 		});
+	}
+
+	private boundRefreshDevices = (): void => { this.enumerateDevices(); };
+
+	private async initDeviceSources(): Promise<void> {
+		// Request permission so device labels are available
+		try {
+			const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+			stream.getTracks().forEach(t => t.stop());
+		} catch {
+			// Permission denied or no devices — enumerate anyway for deviceIds
+		}
+
+		await this.enumerateDevices();
+
+		const audioSelect = this.querySelector('#audio-source') as HTMLSelectElement;
+		const hdmiSelect = this.querySelector('#hdmi-source') as HTMLSelectElement;
+
+		audioSelect.addEventListener('change', () => {
+			state.audioSourceId = audioSelect.value || null;
+		});
+		hdmiSelect.addEventListener('change', () => {
+			state.hdmiSourceId = hdmiSelect.value || null;
+		});
+
+		// Refresh on window focus and every 10 seconds
+		window.addEventListener('focus', this.boundRefreshDevices);
+		this.deviceRefreshTimer = setInterval(() => this.enumerateDevices(), 10000);
+	}
+
+	private async enumerateDevices(): Promise<void> {
+		const devices = await navigator.mediaDevices.enumerateDevices();
+		const audioSelect = this.querySelector('#audio-source') as HTMLSelectElement | null;
+		const hdmiSelect = this.querySelector('#hdmi-source') as HTMLSelectElement | null;
+		if (!audioSelect || !hdmiSelect) return;
+
+		const audioDevices = devices.filter(d => d.kind === 'audioinput');
+		const videoDevices = devices.filter(d => d.kind === 'videoinput');
+
+		const prevAudio = audioSelect.value;
+		const prevHdmi = hdmiSelect.value;
+
+		audioSelect.innerHTML = '<option value="">No Audio Source</option>' +
+			audioDevices.map(d => `<option value="${d.deviceId}">${d.label || d.deviceId}</option>`).join('');
+		hdmiSelect.innerHTML = '<option value="">No HDMI Source</option>' +
+			videoDevices.map(d => `<option value="${d.deviceId}">${d.label || d.deviceId}</option>`).join('');
+
+		// Restore previous selection if still available
+		if (prevAudio && audioDevices.some(d => d.deviceId === prevAudio)) {
+			audioSelect.value = prevAudio;
+		} else {
+			audioSelect.value = '';
+			state.audioSourceId = null;
+		}
+
+		if (prevHdmi && videoDevices.some(d => d.deviceId === prevHdmi)) {
+			hdmiSelect.value = prevHdmi;
+		} else {
+			hdmiSelect.value = '';
+			state.hdmiSourceId = null;
+		}
 	}
 
 	private render(): void {
@@ -114,11 +205,11 @@ export class ControlsPanel extends HTMLElement {
 
 				<div class="h-5 w-px bg-neutral-700"></div>
 
-				<select class="px-2 py-1 text-xs bg-neutral-800 border border-neutral-600 rounded text-neutral-300">
-					<option>No Audio Source</option>
+				<select id="audio-source" class="px-2 py-1 text-xs bg-neutral-800 border border-neutral-600 rounded text-neutral-300">
+					<option value="">No Audio Source</option>
 				</select>
-				<select class="px-2 py-1 text-xs bg-neutral-800 border border-neutral-600 rounded text-neutral-300">
-					<option>No HDMI Source</option>
+				<select id="hdmi-source" class="px-2 py-1 text-xs bg-neutral-800 border border-neutral-600 rounded text-neutral-300">
+					<option value="">No HDMI Source</option>
 				</select>
 
 				<div class="h-5 w-px bg-neutral-700"></div>
@@ -134,9 +225,9 @@ export class ControlsPanel extends HTMLElement {
 
 				<label class="text-xs text-neutral-400 flex items-center gap-1">
 					Resolution
-					<input type="number" value="1920" min="1" class="w-14 px-1 py-0.5 text-xs bg-neutral-800 border border-neutral-600 rounded text-neutral-300 text-center">
+					<input id="res-width" type="number" value="${state.resolution.x}" min="1" class="w-14 px-1 py-0.5 text-xs bg-neutral-800 border border-neutral-600 rounded text-neutral-300 text-center">
 					x
-					<input type="number" value="1080" min="1" class="w-14 px-1 py-0.5 text-xs bg-neutral-800 border border-neutral-600 rounded text-neutral-300 text-center">
+					<input id="res-height" type="number" value="${state.resolution.y}" min="1" class="w-14 px-1 py-0.5 text-xs bg-neutral-800 border border-neutral-600 rounded text-neutral-300 text-center">
 				</label>
 
 				<div class="h-5 w-px bg-neutral-700"></div>

@@ -24,7 +24,7 @@ class StateManager {
 	private selectedShapeId: string | null = null;
 	private selectedGroupId: string | null = null;
 	private multiSelectedIds: Set<string> = new Set();
-	private groups: Map<string, { name: string; shapeIds: string[]; animation?: GroupAnimationOptions; animationPlaying?: boolean; animationStartTime?: number; _randomOrder?: string[] }> = new Map();
+	private groups: Map<string, { name: string; shapeIds: string[]; animation?: GroupAnimationOptions; animationPlaying?: boolean; animationStartTime?: number; _randomOrder?: string[]; _bpmAccumulator?: number; _bpmLastTick?: number }> = new Map();
 	private listeners: Set<Listener> = new Set();
 	private loadListeners: Set<Listener> = new Set();
 	private nextZIndex = 0;
@@ -44,6 +44,8 @@ class StateManager {
 	externalShowOutline = false;
 	externalShowPoints = false;
 	externalShowGrid = false;
+	audioSourceId: string | null = null;
+	hdmiSourceId: string | null = null;
 
 	subscribe(listener: Listener): () => void {
 		this.listeners.add(listener);
@@ -98,6 +100,11 @@ class StateManager {
 			setTimeout(() => this.syncExternal(), 500);
 		}
 		this.listeners.forEach(l => l());
+	}
+
+	setResolution(resolution: Point): void {
+		this.resolution = resolution;
+		this.notify();
 	}
 
 	setExternalToggle(key: 'externalShowOutline' | 'externalShowPoints' | 'externalShowGrid', value: boolean): void {
@@ -289,6 +296,8 @@ class StateManager {
 		if (!group || !group.animation || group.animation.mode === 'none') return;
 		group.animationPlaying = true;
 		group.animationStartTime = Date.now();
+		group._bpmAccumulator = 0;
+		group._bpmLastTick = undefined;
 
 		// Generate random order if needed
 		if (group.animation.mode === 'random') {
@@ -319,13 +328,36 @@ class StateManager {
 		this.notify();
 	}
 
+	tickBpmAnimation(groupId: string, audioLevel: number): void {
+		const group = this.groups.get(groupId);
+		if (!group || !group.animationPlaying || !group.animation || !group.animation.useBpm) return;
+
+		const now = Date.now();
+		const delta = group._bpmLastTick ? now - group._bpmLastTick : 0;
+		group._bpmLastTick = now;
+
+		if (audioLevel > 0.05) {
+			const speed = audioLevel * 3;
+			group._bpmAccumulator = (group._bpmAccumulator ?? 0) + delta * speed;
+		}
+	}
+
 	getGroupAnimationState(groupId: string): Map<string, number> | null {
 		const group = this.groups.get(groupId);
 		if (!group || !group.animationPlaying || !group.animation || !group.animationStartTime) return null;
 
 		const anim = group.animation;
-		const elapsed = Date.now() - group.animationStartTime;
-		const cycleDuration = anim.fadeDuration * 2 + anim.holdDuration;
+
+		let elapsed: number;
+		if (anim.useBpm) {
+			elapsed = group._bpmAccumulator ?? 0;
+		} else {
+			elapsed = Date.now() - group.animationStartTime;
+		}
+
+		const cycleDuration = anim.useBpm
+			? 1500
+			: anim.fadeDuration * 2 + anim.holdDuration;
 
 		// Filter out hidden shapes
 		const visibleIds = group.shapeIds.filter(id => {
