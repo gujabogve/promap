@@ -278,6 +278,16 @@ export class TimelinePanel extends HTMLElement {
 				<input id="pop-hold" type="number" min="0" step="0.1" value="${(kf.holdTime / 1000).toFixed(1)}" class="w-full px-2 py-1 text-xs bg-neutral-700 border border-neutral-600 rounded text-neutral-300">
 			</div>
 
+			<div>
+				<label class="text-xs text-neutral-400 block mb-0.5">Transition Effect</label>
+				<select id="pop-transition" class="w-full px-2 py-1 text-xs bg-neutral-700 border border-neutral-600 rounded text-neutral-300">
+					<option value="none" ${(kf.transitionEffect ?? 'none') === 'none' ? 'selected' : ''}>None</option>
+					<option value="fade" ${kf.transitionEffect === 'fade' ? 'selected' : ''}>Fade (blur)</option>
+					<option value="flash" ${kf.transitionEffect === 'flash' ? 'selected' : ''}>Flash (glow)</option>
+					<option value="dissolve" ${kf.transitionEffect === 'dissolve' ? 'selected' : ''}>Dissolve (glitch)</option>
+				</select>
+			</div>
+
 			<button id="pop-delete" class="w-full px-2 py-1 text-xs bg-red-900 hover:bg-red-800 rounded border border-red-700 text-red-300">Delete Keyframe</button>
 		`;
 
@@ -294,6 +304,10 @@ export class TimelinePanel extends HTMLElement {
 		popover.querySelector('#pop-hold')?.addEventListener('change', (ev) => {
 			const sec = parseFloat((ev.target as HTMLInputElement).value) || 0;
 			state.updateKeyframe(shapeId, kfId, { holdTime: sec * 1000 });
+		});
+
+		popover.querySelector('#pop-transition')?.addEventListener('change', (ev) => {
+			state.updateKeyframe(shapeId, kfId, { transitionEffect: (ev.target as HTMLSelectElement).value as KeyframeData['transitionEffect'] });
 		});
 
 		popover.querySelector('#pop-delete')?.addEventListener('click', () => {

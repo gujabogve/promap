@@ -1,4 +1,4 @@
-import { ShapeData, ShapeType, Point, ResourceData, KeyframeData, GroupAnimationOptions } from '../types';
+import { ShapeData, ShapeType, Point, ResourceData, KeyframeData, GroupAnimationOptions, TransitionEffect } from '../types';
 import '../types/promap-api';
 
 interface ProjectConfig {
@@ -575,6 +575,7 @@ class StateManager {
 			morphToNext: true,
 			easingType: 'linear',
 			holdTime: 0,
+			transitionEffect: 'none',
 		};
 
 		this.keyframes[shapeId].push(kf);
@@ -593,7 +594,7 @@ class StateManager {
 		this.notify();
 	}
 
-	updateKeyframe(shapeId: string, keyframeId: string, updates: Partial<Pick<KeyframeData, 'morphToNext' | 'easingType' | 'holdTime'>>): void {
+	updateKeyframe(shapeId: string, keyframeId: string, updates: Partial<Pick<KeyframeData, 'morphToNext' | 'easingType' | 'holdTime' | 'transitionEffect'>>): void {
 		const kfs = this.keyframes[shapeId];
 		if (!kfs) return;
 		const kf = kfs.find(k => k.id === keyframeId);
@@ -701,6 +702,7 @@ class StateManager {
 						const progress = transitionSpan > 0 ? (t - holdEnd) / transitionSpan : 1;
 						const eased = this.ease(Math.min(1, Math.max(0, progress)), prev.easingType);
 						this.interpolateShape(shape, prev.shapeState, next.shapeState, eased);
+						this.applyTransitionEffect(shape, prev.transitionEffect ?? 'none', eased);
 					}
 				}
 			}
@@ -747,6 +749,44 @@ class StateManager {
 			distortion: a.effects.distortion + (b.effects.distortion - a.effects.distortion) * t,
 			glitch: a.effects.glitch + (b.effects.glitch - a.effects.glitch) * t,
 		};
+	}
+
+	private applyTransitionEffect(shape: ShapeData, effect: TransitionEffect, progress: number): void {
+		if (effect === 'none') return;
+
+		switch (effect) {
+			case 'fade': {
+				// Fade: shape fades out then back in at midpoint
+				const fadeAmount = progress < 0.5
+					? progress * 2 // 0 to 1 in first half
+					: (1 - progress) * 2; // 1 to 0 in second half
+				// We'll use this as a temporary opacity multiplier via effects
+				shape.effects = {
+					...shape.effects,
+					blur: shape.effects.blur + fadeAmount * 20,
+				};
+				break;
+			}
+			case 'flash': {
+				// Flash: brief white flash at the transition midpoint
+				const flashIntensity = Math.max(0, 1 - Math.abs(progress - 0.5) * 4);
+				shape.effects = {
+					...shape.effects,
+					glow: Math.max(shape.effects.glow, flashIntensity * 100),
+				};
+				break;
+			}
+			case 'dissolve': {
+				// Dissolve: adds noise/glitch during transition
+				const dissolveAmount = Math.sin(progress * Math.PI);
+				shape.effects = {
+					...shape.effects,
+					glitch: Math.max(shape.effects.glitch, dissolveAmount * 60),
+					distortion: Math.max(shape.effects.distortion, dissolveAmount * 30),
+				};
+				break;
+			}
+		}
 	}
 
 	private ease(t: number, type: KeyframeData['easingType']): number {

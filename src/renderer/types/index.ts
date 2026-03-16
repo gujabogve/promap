@@ -89,6 +89,8 @@ export type ProjectionType = 'default' | 'fit' | 'masked' | 'mapped';
 
 export type EasingType = 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out';
 
+export type TransitionEffect = 'none' | 'fade' | 'flash' | 'dissolve';
+
 export interface KeyframeData {
 	id: string;
 	time: number;
@@ -96,6 +98,7 @@ export interface KeyframeData {
 	morphToNext: boolean;
 	easingType: EasingType;
 	holdTime: number;
+	transitionEffect: TransitionEffect;
 }
 
 export interface ShapeData {
