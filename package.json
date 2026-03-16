@@ -1,0 +1,22 @@
+{
+	"name": "promap",
+	"version": "0.1.0",
+	"description": "Projection mapping tool",
+	"main": "./out/main/index.js",
+	"scripts": {
+		"dev": "electron-vite dev",
+		"build": "electron-vite build",
+		"preview": "electron-vite preview"
+	},
+	"dependencies": {
+		"pixi.js": "^8.17.1"
+	},
+	"devDependencies": {
+		"@tailwindcss/vite": "^4.2.1",
+		"electron": "^41.0.2",
+		"electron-vite": "^5.0.0",
+		"tailwindcss": "^4.2.1",
+		"typescript": "^5.9.3",
+		"vite": "^8.0.0"
+	}
+}
