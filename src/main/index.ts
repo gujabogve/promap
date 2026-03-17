@@ -30,7 +30,7 @@ function createWindow(): void {
 	if (process.env.ELECTRON_RENDERER_URL) {
 		mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
 	} else {
-		mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
+		mainWindow.loadFile(join(app.getAppPath(), 'out', 'renderer', 'index.html'));
 	}
 
 	mainWindow.on('closed', () => {
@@ -46,11 +46,17 @@ function getWindow(): BrowserWindow | undefined {
 	return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
 }
 
+function pathToFileURL(p: string): string {
+	// Convert Windows backslashes to forward slashes and ensure proper file:/// prefix
+	const normalized = p.replace(/\\/g, '/');
+	return `file:///${normalized.replace(/^\/+/, '')}`;
+}
+
 function setupProtocol(): void {
 	protocol.handle('media', (request) => {
 		const filename = decodeURIComponent(request.url.replace('media://', ''));
 		const filePath = join(MEDIA_DIR(), filename);
-		return net.fetch(`file://${filePath}`);
+		return net.fetch(pathToFileURL(filePath));
 	});
 }
 
@@ -76,14 +82,11 @@ function setupIpc(): void {
 			},
 		});
 
-		const url = process.env.ELECTRON_RENDERER_URL
-			? `${process.env.ELECTRON_RENDERER_URL}/external.html?projector=${id}`
-			: join(__dirname, '../renderer/external.html');
-
 		if (process.env.ELECTRON_RENDERER_URL) {
-			win.loadURL(url);
+			win.loadURL(`${process.env.ELECTRON_RENDERER_URL}/external.html?projector=${id}`);
 		} else {
-			win.loadFile(url, { query: { projector: String(id) } });
+			const externalPath = join(app.getAppPath(), 'out', 'renderer', 'external.html');
+			win.loadFile(externalPath, { query: { projector: String(id) } });
 		}
 
 		win.on('closed', () => {
