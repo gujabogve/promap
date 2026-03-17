@@ -2,7 +2,10 @@ import { Application, Graphics, FederatedPointerEvent, Container, Sprite, Textur
 import { state } from '../state/state-manager';
 import { ShapeData, Point, ResourceData, TextOptions, ColorOptions } from '../types';
 import { audioAnalyzer } from '../audio/audio-analyzer';
+import { PixelateFilter, RGBSplitFilter, DistortionFilter, GlitchFilter, VignetteFilter, NoiseColorFilter, WaveFilter } from './custom-filters';
 import { midiSync } from '../audio/midi-sync';
+import { prolinkBridge } from '../audio/prolink-bridge';
+import { createStlEntry, tickStlEntries } from '../utils/stl-renderer';
 
 const POINT_RADIUS = 6;
 const POINT_COLOR = 0x3b82f6;
@@ -62,6 +65,8 @@ export class CanvasManager {
 	private textEntries: Map<string, TextEntry> = new Map();
 	private colorEntries: Map<string, ColorEntry> = new Map();
 	private loadingTextures: Set<string> = new Set();
+	private waveFilterCache: Map<string, WaveFilter> = new Map();
+	private glitchFilterCache: Map<string, GlitchFilter> = new Map();
 	private removeMidiBeatListener: (() => void) | null = null;
 
 	constructor(app: Application) {
@@ -115,10 +120,25 @@ export class CanvasManager {
 
 		// Audio beat detection — advance BPM animations on detected beats
 		audioAnalyzer.onBeat(() => {
-			if (midiSync.active) return; // MIDI takes priority
+			if (midiSync.active || prolinkBridge.active) return; // MIDI/ProLink take priority
 			for (const [groupId, group] of state.getGroups()) {
 				if (group.animationPlaying && group.animation?.useBpm) {
 					state.advanceGroupAnimation(groupId);
+				}
+			}
+		});
+
+		// Pro DJ Link beat detection — advance BPM animations on CDJ beats
+		prolinkBridge.onBeat(() => {
+			for (const [groupId, group] of state.getGroups()) {
+				if (group.animationPlaying && (group.animation?.useBpm || group.animation?.useMidi)) {
+					state.advanceGroupAnimation(groupId);
+				}
+			}
+			// Per-shape Pro DJ Link sync
+			for (const shape of state.getShapes()) {
+				if (shape.midiSync && shape.resource) {
+					shape.playing = true;
 				}
 			}
 		});
@@ -133,7 +153,30 @@ export class CanvasManager {
 			}
 		}
 
+		// Sync audio/midi state for external windows
+		state._audioLevel = audioAnalyzer.running ? audioAnalyzer.level : 0;
+		state._audioAboveThreshold = audioAnalyzer.isAboveThreshold;
+		state._midiBpm = midiSync.bpm;
+		state._midiActive = midiSync.active;
+
 		const shapes = state.getShapes();
+		const playingStlIds = new Set<string>();
+		const stlSpeedMultipliers = new Map<string, number>();
+		for (const shape of shapes) {
+			if (shape.playing && shape.resource) {
+				playingStlIds.add(shape.resource);
+				if (shape.bpmSync || shape.midiSync) {
+					let mult = 0;
+					if (shape.bpmSync && audioAnalyzer.running && audioAnalyzer.isAboveThreshold) {
+						mult = Math.max(0.5, audioAnalyzer.level * 10);
+					} else if (shape.midiSync && midiSync.active && midiSync.bpm > 0) {
+						mult = midiSync.bpm / 120;
+					}
+					stlSpeedMultipliers.set(shape.resource, mult);
+				}
+			}
+		}
+		tickStlEntries(playingStlIds, stlSpeedMultipliers);
 		for (const [resourceId, entry] of this.textEntries) {
 			if (!entry.options.marquee) continue;
 			const shape = shapes.find(s => s.resource === resourceId);
@@ -184,7 +227,17 @@ export class CanvasManager {
 				}
 			}
 		}
-		if (hasGroupAnim) {
+		// Update time-based filters continuously
+		let needsFilterRender = false;
+		for (const wf of this.waveFilterCache.values()) {
+			wf.update();
+			needsFilterRender = true;
+		}
+		for (const gf of this.glitchFilterCache.values()) {
+			gf.update();
+			needsFilterRender = true;
+		}
+		if (hasGroupAnim || needsFilterRender) {
 			this.render();
 		}
 	}
@@ -415,8 +468,17 @@ export class CanvasManager {
 			const entry = this.videoEntries.get(resource.id);
 			if (!entry) continue;
 
-			if (shape.midiSync && midiSync.active) {
-				// MIDI sync: play at BPM-derived rate
+			if (shape.midiSync && prolinkBridge.active) {
+				// Pro DJ Link sync: play at CDJ master BPM
+				if (entry.element.paused) entry.element.play().catch(() => {});
+				const bpm = prolinkBridge.masterBpm;
+				if (bpm > 0) {
+					entry.element.playbackRate = (shape.fps / 30) * (bpm / 120);
+				} else {
+					entry.element.playbackRate = shape.fps / 30;
+				}
+			} else if (shape.midiSync && midiSync.active) {
+				// MIDI sync: play at MIDI BPM
 				if (entry.element.paused) entry.element.play().catch(() => {});
 				const midiBpm = midiSync.bpm;
 				if (midiBpm > 0) {
@@ -589,7 +651,7 @@ export class CanvasManager {
 		});
 
 		// Apply effects as filters
-		const filters = this.buildFilters(shape);
+		const filters = this.buildFilters(shape.id, shape);
 		if (filters.length > 0) {
 			shapeContainer.filters = filters;
 		}
@@ -601,7 +663,7 @@ export class CanvasManager {
 		this.shapesContainer.addChild(shapeContainer);
 	}
 
-	private buildFilters(shape: ShapeData): Filter[] {
+	private buildFilters(shapeId: string, shape: ShapeData): Filter[] {
 		const filters: Filter[] = [];
 		const fx = shape.effects;
 
@@ -630,21 +692,66 @@ export class CanvasManager {
 		}
 
 		if (fx.distortion > 0) {
-			// Simulate distortion with color shift
-			const cm = new ColorMatrixFilter();
-			const shift = fx.distortion * 0.01;
-			// Offset color channels slightly
-			cm.matrix[1] = shift;
-			cm.matrix[6] = -shift;
-			filters.push(cm);
+			filters.push(new DistortionFilter(fx.distortion * 0.03));
 		}
 
 		if (fx.glitch > 0) {
-			// Simulate glitch with random hue rotation
+			let gf = this.glitchFilterCache.get(shapeId);
+			if (!gf) {
+				gf = new GlitchFilter(fx.glitch);
+				this.glitchFilterCache.set(shapeId, gf);
+			}
+			gf.amount = fx.glitch;
+			filters.push(gf);
+		} else {
+			this.glitchFilterCache.delete(shapeId);
+		}
+
+		if ((fx.pixelate ?? 0) > 0) {
+			filters.push(new PixelateFilter(fx.pixelate * 0.15 + 1));
+		}
+
+		if ((fx.rgbSplit ?? 0) > 0) {
+			filters.push(new RGBSplitFilter(fx.rgbSplit * 0.1));
+		}
+
+		if ((fx.invert ?? 0) > 0) {
 			const cm = new ColorMatrixFilter();
-			const hue = (Math.random() - 0.5) * fx.glitch * 3.6;
-			cm.hue(hue, false);
+			const t = fx.invert / 100;
+			cm.matrix[0] = 1 - 2 * t;
+			cm.matrix[6] = 1 - 2 * t;
+			cm.matrix[12] = 1 - 2 * t;
+			cm.matrix[4] = t;
+			cm.matrix[9] = t;
+			cm.matrix[14] = t;
 			filters.push(cm);
+		}
+
+		if ((fx.sepia ?? 0) > 0) {
+			const cm = new ColorMatrixFilter();
+			cm.sepia(fx.sepia / 100, false);
+			filters.push(cm);
+		}
+
+		if ((fx.noise ?? 0) > 0) {
+			const nf = new NoiseColorFilter(fx.noise * 0.01);
+			filters.push(nf);
+		}
+
+		if ((fx.wave ?? 0) > 0) {
+			let wf = this.waveFilterCache.get(shapeId);
+			if (!wf) {
+				wf = new WaveFilter(fx.wave);
+				this.waveFilterCache.set(shapeId, wf);
+			}
+			wf.amount = fx.wave;
+			filters.push(wf);
+		} else {
+			this.waveFilterCache.delete(shapeId);
+		}
+
+		if ((fx.vignette ?? 0) > 0) {
+			filters.push(new VignetteFilter(fx.vignette * 0.01));
 		}
 
 		return filters;
@@ -682,9 +789,9 @@ export class CanvasManager {
 		if (shape.projectionType === 'masked') {
 			const offset = shape.resourceOffset ?? { x: 0, y: 0 };
 			const scale = shape.resourceScale ?? 1;
-			// Masked: resource at absolute position, shapes act as windows
-			sprite.x = offset.x;
-			sprite.y = offset.y;
+			// Masked: resource moves relative to shape position
+			sprite.x = bounds.x + offset.x;
+			sprite.y = bounds.y + offset.y;
 			sprite.scale.set(scale);
 		} else if (shape.projectionType === 'mapped') {
 			const offset = shape.resourceOffset ?? { x: 0, y: 0 };
@@ -753,6 +860,7 @@ export class CanvasManager {
 			img.src = resource.src;
 		} else if (resource.type === 'video') {
 			const video = document.createElement('video');
+			video.crossOrigin = 'anonymous';
 			video.src = resource.src;
 			video.loop = true;
 			video.muted = true;
@@ -797,6 +905,19 @@ export class CanvasManager {
 			this.textureCache.set(resource.id, entry.texture);
 			this.loadingTextures.delete(resource.id);
 			this.render();
+		} else if (resource.type === 'stl') {
+			const xhr = new XMLHttpRequest();
+			xhr.open('GET', resource.src);
+			xhr.responseType = 'arraybuffer';
+			xhr.onload = () => {
+				const speed = resource.stlOptions?.rotationSpeed ?? 1;
+				const { texture } = createStlEntry(resource.id, xhr.response as ArrayBuffer, speed);
+				this.textureCache.set(resource.id, texture);
+				this.loadingTextures.delete(resource.id);
+				this.render();
+			};
+			xhr.onerror = () => this.loadingTextures.delete(resource.id);
+			xhr.send();
 		}
 	}
 

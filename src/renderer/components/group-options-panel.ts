@@ -173,11 +173,18 @@ export class GroupOptionsPanel extends HTMLElement {
 				<div>
 					<label class="text-xs text-neutral-400 block mb-1">Effects (all)</label>
 					<div class="space-y-2">
-						${this.renderEffect('blur', 'Blur')}
-						${this.renderEffect('glow', 'Glow')}
-						${this.renderEffect('colorCorrection', 'Color Correction')}
-						${this.renderEffect('distortion', 'Distortion')}
-						${this.renderEffect('glitch', 'Glitch')}
+						${this.renderEffect('blur', 'Blur', groupShapes[0]?.effects?.blur)}
+						${this.renderEffect('glow', 'Glow', groupShapes[0]?.effects?.glow)}
+						${this.renderEffect('colorCorrection', 'Color Correction', groupShapes[0]?.effects?.colorCorrection)}
+						${this.renderEffect('distortion', 'Distortion', groupShapes[0]?.effects?.distortion)}
+						${this.renderEffect('glitch', 'Glitch', groupShapes[0]?.effects?.glitch)}
+						${this.renderEffect('pixelate', 'Pixelate', groupShapes[0]?.effects?.pixelate)}
+						${this.renderEffect('rgbSplit', 'RGB Split', groupShapes[0]?.effects?.rgbSplit)}
+						${this.renderEffect('invert', 'Invert', groupShapes[0]?.effects?.invert)}
+						${this.renderEffect('sepia', 'Sepia', groupShapes[0]?.effects?.sepia)}
+						${this.renderEffect('noise', 'Noise', groupShapes[0]?.effects?.noise)}
+						${this.renderEffect('wave', 'Wave', groupShapes[0]?.effects?.wave)}
+						${this.renderEffect('vignette', 'Vignette', groupShapes[0]?.effects?.vignette)}
 					</div>
 				</div>
 			</div>
@@ -274,13 +281,14 @@ export class GroupOptionsPanel extends HTMLElement {
 		return html;
 	}
 
-	private renderEffect(key: string, label: string): string {
+	private renderEffect(key: string, label: string, value = 0): string {
+		const v = value ?? 0;
 		return `
 			<div>
 				<div class="flex justify-between text-xs text-neutral-500 mb-0.5">
-					<span>${label}</span><span id="grp-fx-${key}-value">0%</span>
+					<span>${label}</span><span id="grp-fx-${key}-value">${v}%</span>
 				</div>
-				<input id="grp-fx-${key}" type="range" min="0" max="100" value="0" class="w-full accent-blue-500">
+				<input id="grp-fx-${key}" type="range" min="0" max="100" value="${v}" class="w-full accent-blue-500">
 			</div>
 		`;
 	}
@@ -531,7 +539,7 @@ export class GroupOptionsPanel extends HTMLElement {
 		});
 
 		// Effects
-		for (const key of ['blur', 'glow', 'colorCorrection', 'distortion', 'glitch'] as const) {
+		for (const key of ['blur', 'glow', 'colorCorrection', 'distortion', 'glitch', 'pixelate', 'rgbSplit', 'invert', 'sepia', 'noise', 'wave', 'vignette'] as const) {
 			const slider = this.querySelector(`#grp-fx-${key}`) as HTMLInputElement;
 			slider?.addEventListener('input', () => {
 				const val = parseInt(slider.value);

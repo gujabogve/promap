@@ -1,12 +1,27 @@
-import { app, BrowserWindow, ipcMain, dialog, protocol, net, session } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, protocol, net, session, screen } from 'electron';
 import { join, extname, basename } from 'path';
-import { readFile, writeFile, copyFile, mkdir } from 'fs/promises';
+import { readFile, writeFile, copyFile, mkdir, stat } from 'fs/promises';
+import { createReadStream } from 'fs';
 import { randomUUID } from 'crypto';
+import { prolinkListener } from './prolink';
+
+// Force dedicated GPU (NVIDIA/AMD) instead of integrated
+app.commandLine.appendSwitch('force_high_performance_gpu');
+app.commandLine.appendSwitch('enable-gpu-rasterization');
+app.commandLine.appendSwitch('enable-zero-copy');
+app.commandLine.appendSwitch('enable-hardware-overlays', 'single-fullscreen,single-on-top,underlay');
+app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoder,VaapiVideoEncoder,CanvasOopRasterization,UseSkiaRenderer');
+app.commandLine.appendSwitch('ignore-gpu-blocklist');
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-software-rasterizer');
+app.commandLine.appendSwitch('use-angle', 'd3d11');
+app.commandLine.appendSwitch('use-gl', 'angle');
 
 const MEDIA_DIR = () => join(app.getPath('userData'), 'media');
 
 protocol.registerSchemesAsPrivileged([
-	{ scheme: 'media', privileges: { stream: true, bypassCSP: true } },
+	{ scheme: 'media', privileges: { stream: true, bypassCSP: true, supportFetchAPI: true, corsEnabled: true } },
 ]);
 
 let mainWindow: BrowserWindow | null = null;
@@ -20,11 +35,22 @@ function createWindow(): void {
 		minWidth: 1024,
 		minHeight: 700,
 		backgroundColor: '#0a0a0a',
+		icon: join(app.getAppPath(), 'build', 'icon.png'),
 		webPreferences: {
 			preload: join(__dirname, '../preload/index.js'),
 			contextIsolation: true,
 			nodeIntegration: false,
+			backgroundThrottling: false,
 		},
+	});
+
+	mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+		callback({
+			responseHeaders: {
+				...details.responseHeaders,
+				'Content-Security-Policy': ["default-src * 'unsafe-inline' 'unsafe-eval' data: blob: media:;"],
+			},
+		});
 	});
 
 	if (process.env.ELECTRON_RENDERER_URL) {
@@ -33,12 +59,29 @@ function createWindow(): void {
 		mainWindow.loadFile(join(app.getAppPath(), 'out', 'renderer', 'index.html'));
 	}
 
-	mainWindow.on('closed', () => {
-		mainWindow = null;
+	const closeAllExternal = (): void => {
 		for (const [, win] of externalWindows) {
 			if (!win.isDestroyed()) win.close();
 		}
 		externalWindows.clear();
+	};
+
+	mainWindow.on('closed', () => {
+		mainWindow = null;
+		closeAllExternal();
+	});
+
+	// Close external windows on main window reload/refresh
+	let initialLoadDone = false;
+	mainWindow.webContents.on('did-finish-load', () => {
+		if (initialLoadDone) {
+			// This is a reload — close all external windows
+			closeAllExternal();
+		}
+		initialLoadDone = true;
+	});
+	mainWindow.webContents.on('render-process-gone', () => {
+		closeAllExternal();
 	});
 }
 
@@ -52,16 +95,69 @@ function pathToFileURL(p: string): string {
 	return `file:///${normalized.replace(/^\/+/, '')}`;
 }
 
+const MIME_TYPES: Record<string, string> = {
+	'.mp4': 'video/mp4', '.webm': 'video/webm', '.avi': 'video/x-msvideo',
+	'.mov': 'video/quicktime', '.mkv': 'video/x-matroska',
+	'.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+	'.gif': 'image/gif', '.bmp': 'image/bmp', '.webp': 'image/webp',
+	'.stl': 'application/octet-stream', '.svg': 'image/svg+xml',
+};
+
 function setupProtocol(): void {
-	protocol.handle('media', (request) => {
+	protocol.handle('media', async (request) => {
 		const filename = decodeURIComponent(request.url.replace('media://', ''));
 		const filePath = join(MEDIA_DIR(), filename);
-		return net.fetch(pathToFileURL(filePath));
+		const ext = extname(filePath).toLowerCase();
+		const mime = MIME_TYPES[ext] || 'application/octet-stream';
+
+		try {
+			const fileStat = await stat(filePath);
+			const fileSize = fileStat.size;
+			const rangeHeader = request.headers.get('range');
+
+			if (rangeHeader) {
+				const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+				if (match) {
+					const start = parseInt(match[1]);
+					const end = match[2] ? parseInt(match[2]) : fileSize - 1;
+					const chunkSize = end - start + 1;
+
+					const stream = createReadStream(filePath, { start, end });
+					const chunks: Buffer[] = [];
+					for await (const chunk of stream) {
+						chunks.push(Buffer.from(chunk as Uint8Array));
+					}
+					const buffer = Buffer.concat(chunks);
+
+					return new Response(buffer, {
+						status: 206,
+						headers: {
+							'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+							'Accept-Ranges': 'bytes',
+							'Content-Length': String(chunkSize),
+							'Content-Type': mime,
+						},
+					});
+				}
+			}
+
+			const data = await readFile(filePath);
+			return new Response(data, {
+				status: 200,
+				headers: {
+					'Content-Length': String(fileSize),
+					'Content-Type': mime,
+					'Accept-Ranges': 'bytes',
+				},
+			});
+		} catch {
+			return new Response('Not found', { status: 404 });
+		}
 	});
 }
 
 function setupIpc(): void {
-	ipcMain.handle('open-external-window', async (_event, projectorId?: number) => {
+	ipcMain.handle('open-external-window', async (_event, projectorId?: number, screenId?: number) => {
 		const id = projectorId ?? nextProjectorId++;
 
 		if (externalWindows.has(id)) {
@@ -69,9 +165,19 @@ function setupIpc(): void {
 			return id;
 		}
 
+		// Find target screen
+		let targetDisplay = null;
+		if (screenId !== undefined) {
+			targetDisplay = screen.getAllDisplays().find(d => d.id === screenId) ?? null;
+		}
+
+		const bounds = targetDisplay?.bounds ?? { x: 100, y: 100, width: 1920, height: 1080 };
+
 		const win = new BrowserWindow({
-			width: 1920,
-			height: 1080,
+			x: bounds.x,
+			y: bounds.y,
+			width: bounds.width,
+			height: bounds.height,
 			backgroundColor: '#000000',
 			frame: false,
 			title: `ProMap - Projector ${id}`,
@@ -79,8 +185,20 @@ function setupIpc(): void {
 				preload: join(__dirname, '../preload/index.js'),
 				contextIsolation: true,
 				nodeIntegration: false,
+				backgroundThrottling: false,
 			},
 		});
+
+		// Move to target display and go fullscreen after window is ready
+		if (targetDisplay) {
+			win.once('ready-to-show', () => {
+				win.setPosition(targetDisplay!.bounds.x, targetDisplay!.bounds.y);
+				win.setSize(targetDisplay!.bounds.width, targetDisplay!.bounds.height);
+				setTimeout(() => {
+					win.setFullScreen(true);
+				}, 100);
+			});
+		}
 
 		if (process.env.ELECTRON_RENDERER_URL) {
 			win.loadURL(`${process.env.ELECTRON_RENDERER_URL}/external.html?projector=${id}`);
@@ -134,7 +252,7 @@ function setupIpc(): void {
 		const { canceled, filePaths } = await dialog.showOpenDialog(win!, {
 			title: 'Upload Media',
 			filters: [
-				{ name: 'Media Files', extensions: ['mp4', 'webm', 'avi', 'mov', 'mkv', 'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'] },
+				{ name: 'Media Files', extensions: ['mp4', 'webm', 'avi', 'mov', 'mkv', 'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'stl'] },
 			],
 			properties: ['openFile', 'multiSelections'],
 		});
@@ -152,13 +270,52 @@ function setupIpc(): void {
 			await copyFile(srcPath, destPath);
 
 			const isVideo = ['.mp4', '.webm', '.avi', '.mov', '.mkv'].includes(ext);
+			const isStl = ext === '.stl';
 			results.push({
 				name: basename(srcPath),
-				type: isVideo ? 'video' : 'image',
+				type: isStl ? 'stl' : isVideo ? 'video' : 'image',
 				filename,
 			});
 		}
 		return results;
+	});
+
+	// Get available screens/displays
+	ipcMain.handle('get-screens', () => {
+		const displays = screen.getAllDisplays();
+		return displays.map(d => ({
+			id: d.id,
+			label: d.label || `Display ${d.id}`,
+			width: d.size.width,
+			height: d.size.height,
+			x: d.bounds.x,
+			y: d.bounds.y,
+			primary: d.id === screen.getPrimaryDisplay().id,
+		}));
+	});
+
+	// Pro DJ Link
+	ipcMain.handle('prolink-start', () => {
+		if (mainWindow) prolinkListener.start(mainWindow);
+		return true;
+	});
+	ipcMain.handle('prolink-stop', () => {
+		prolinkListener.stop();
+		return true;
+	});
+	ipcMain.handle('prolink-devices', () => {
+		return prolinkListener.getDevices();
+	});
+	ipcMain.handle('prolink-running', () => {
+		return prolinkListener.running;
+	});
+
+	ipcMain.handle('save-media-blob', async (_event, data: Uint8Array, filename: string) => {
+		const mediaDir = MEDIA_DIR();
+		await mkdir(mediaDir, { recursive: true });
+		const destPath = join(mediaDir, filename);
+		await writeFile(destPath, Buffer.from(data));
+		return true;
 	});
 
 	ipcMain.handle('save-config', async (_event, json: string) => {

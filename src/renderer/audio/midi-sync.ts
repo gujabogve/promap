@@ -26,7 +26,14 @@ export class MidiSync {
 	}
 
 	fireBeat(): void {
-		this._lastBeatTime = performance.now();
+		const now = performance.now();
+		if (this._lastBeatTime > 0) {
+			const interval = now - this._lastBeatTime;
+			if (interval > 0 && interval < 5000) {
+				this._bpm = Math.round(60000 / interval);
+			}
+		}
+		this._lastBeatTime = now;
 		this.beatListeners.forEach(l => l());
 	}
 
@@ -117,6 +124,11 @@ export class MidiSync {
 				parsed = { type: 'cc', cc: data[1], value: data[2] };
 				break;
 			default:
+				// MTC Quarter Frame
+				if (status === 0xf1) {
+					parsed = { type: 'mtc', value: data[1] };
+					break;
+				}
 				// MIDI Clock
 				if (status === 0xf8) {
 					this.handleClock();

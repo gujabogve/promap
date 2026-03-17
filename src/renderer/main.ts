@@ -13,6 +13,7 @@ import './components/right-panel';
 import './components/group-options-panel';
 import './components/midi-test-panel';
 import './components/projector-modal';
+import './components/pixabay-modal';
 import './components/mask-position-modal';
 import { state } from './state/state-manager';
 import { ShortcutsModal } from './components/shortcuts-modal';

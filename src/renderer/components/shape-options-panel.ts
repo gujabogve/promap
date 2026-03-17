@@ -1,5 +1,6 @@
 import { state } from '../state/state-manager';
 import { ShapeData } from '../types';
+import { updateStlRotationSpeed } from '../utils/stl-renderer';
 
 export class ShapeOptionsPanel extends HTMLElement {
 	private currentShapeId: string | null = null;
@@ -175,12 +176,11 @@ export class ShapeOptionsPanel extends HTMLElement {
 					</select>
 				</div>
 
-				<!-- Projector -->
-				<div>
-					<label class="text-xs text-neutral-400 block mb-1">Projector</label>
-					<select id="shape-projector" class="w-full px-2 py-1 text-xs bg-neutral-800 border border-neutral-600 rounded text-neutral-300">
-						${[1, 2, 3, 4].map(n => `<option value="${n}" ${shape.projector === n ? 'selected' : ''}>Projector ${n}</option>`).join('')}
-					</select>
+				<!-- Projector (read-only indicator) -->
+				<div class="flex items-center gap-1.5 text-xs text-neutral-500">
+					<span>Display:</span>
+					<span class="text-neutral-300">P${shape.projector}</span>
+					<span class="text-neutral-600">(manage in Displays tab)</span>
 				</div>
 
 				<!-- Projection Type -->
@@ -196,6 +196,20 @@ export class ShapeOptionsPanel extends HTMLElement {
 				${shape.projectionType !== 'default' && shape.resource ? `
 				<button id="btn-position-mask" class="w-full px-2 py-1 text-xs bg-neutral-800 hover:bg-neutral-700 rounded border border-neutral-600 text-neutral-300">Position Resource</button>
 				` : ''}
+
+				${(() => {
+					const res = shape.resource ? state.getResources().find(r => r.id === shape.resource) : null;
+					if (res?.type !== 'stl') return '';
+					const speed = res.stlOptions?.rotationSpeed ?? 1;
+					return `
+					<div>
+						<label class="text-xs text-neutral-400 block mb-1">3D Rotation Speed</label>
+						<div class="flex items-center gap-1.5">
+							<input id="stl-rotation-speed" type="range" min="0" max="10" step="0.1" value="${speed}" class="flex-1 accent-blue-500">
+							<span id="stl-rotation-value" class="text-xs text-neutral-300 w-8 text-right">${speed.toFixed(1)}x</span>
+						</div>
+					</div>`;
+				})()}
 
 				<div class="h-px bg-neutral-700"></div>
 
@@ -234,6 +248,13 @@ export class ShapeOptionsPanel extends HTMLElement {
 						${this.renderEffect('colorCorrection', 'Color Correction', shape.effects.colorCorrection)}
 						${this.renderEffect('distortion', 'Distortion', shape.effects.distortion)}
 						${this.renderEffect('glitch', 'Glitch', shape.effects.glitch)}
+						${this.renderEffect('pixelate', 'Pixelate', shape.effects.pixelate)}
+						${this.renderEffect('rgbSplit', 'RGB Split', shape.effects.rgbSplit)}
+						${this.renderEffect('invert', 'Invert', shape.effects.invert)}
+						${this.renderEffect('sepia', 'Sepia', shape.effects.sepia)}
+						${this.renderEffect('noise', 'Noise', shape.effects.noise)}
+						${this.renderEffect('wave', 'Wave', shape.effects.wave)}
+						${this.renderEffect('vignette', 'Vignette', shape.effects.vignette)}
 					</div>
 				</div>
 			</div>
@@ -246,7 +267,7 @@ export class ShapeOptionsPanel extends HTMLElement {
 		if (!shape.resource) return '';
 		const res = state.getResources().find(r => r.id === shape.resource);
 		if (!res) return '';
-		const icon = res.type === 'video' ? '🎬' : res.type === 'image' ? '🖼' : '📝';
+		const icon = res.type === 'video' ? '🎬' : res.type === 'image' ? '🖼' : res.type === 'stl' ? '📐' : '📝';
 		return `
 			<div class="flex items-center gap-1.5 px-2 py-1 mb-1.5 bg-blue-900/40 border border-blue-700/50 rounded text-xs text-blue-300">
 				<span>${icon}</span>
@@ -257,12 +278,13 @@ export class ShapeOptionsPanel extends HTMLElement {
 	}
 
 	private renderEffect(key: string, label: string, value: number): string {
+		const v = value ?? 0;
 		return `
 			<div>
 				<div class="flex justify-between text-xs text-neutral-500 mb-0.5">
-					<span>${label}</span><span id="effect-${key}-value">${value}%</span>
+					<span>${label}</span><span id="effect-${key}-value">${v}%</span>
 				</div>
-				<input id="effect-${key}" type="range" min="0" max="100" value="${value}" class="w-full accent-blue-500">
+				<input id="effect-${key}" type="range" min="0" max="100" value="${v}" class="w-full accent-blue-500">
 			</div>
 		`;
 	}
@@ -349,6 +371,19 @@ export class ShapeOptionsPanel extends HTMLElement {
 		this.listen('shape-bpm', 'change', (el) => update({ bpmSync: (el as HTMLInputElement).checked }));
 		this.listen('shape-midi', 'change', (el) => update({ midiSync: (el as HTMLInputElement).checked }));
 
+		this.listen('stl-rotation-speed', 'input', (el) => {
+			const val = parseFloat((el as HTMLInputElement).value);
+			const label = this.querySelector('#stl-rotation-value');
+			if (label) label.textContent = `${val.toFixed(1)}x`;
+			const shape = state.getSelectedShape();
+			if (!shape?.resource) return;
+			const res = state.getResources().find(r => r.id === shape.resource);
+			if (res?.type === 'stl') {
+				state.updateResource(res.id, { stlOptions: { rotationSpeed: val } });
+				updateStlRotationSpeed(res.id, val);
+			}
+		});
+
 		this.querySelector('#btn-play')?.addEventListener('click', () => {
 			const shape = state.getSelectedShape();
 			if (shape) {
@@ -377,7 +412,7 @@ export class ShapeOptionsPanel extends HTMLElement {
 		this.querySelector('#btn-layer-down')?.addEventListener('click', () => state.moveShapeLayer(shapeId, 'down'));
 
 		// Effects
-		for (const key of ['blur', 'glow', 'colorCorrection', 'distortion', 'glitch'] as const) {
+		for (const key of ['blur', 'glow', 'colorCorrection', 'distortion', 'glitch', 'pixelate', 'rgbSplit', 'invert', 'sepia', 'noise', 'wave', 'vignette'] as const) {
 			this.listen(`effect-${key}`, 'input', (el) => {
 				const val = parseInt((el as HTMLInputElement).value);
 				const shape = state.getSelectedShape();
@@ -399,10 +434,6 @@ export class ShapeOptionsPanel extends HTMLElement {
 			update({ resource: null });
 			const shape = state.getSelectedShape();
 			if (shape) this.renderForm(shape);
-		});
-
-		this.listen('shape-projector', 'change', (el) => {
-			update({ projector: parseInt((el as HTMLSelectElement).value) });
 		});
 
 		this.listen('shape-projection-type', 'change', (el) => {

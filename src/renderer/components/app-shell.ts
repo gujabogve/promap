@@ -30,6 +30,7 @@ export class AppShell extends HTMLElement {
 			<mask-position-modal></mask-position-modal>
 			<midi-test-panel></midi-test-panel>
 			<projector-modal></projector-modal>
+			<pixabay-modal></pixabay-modal>
 		`;
 
 		this.setupResize();

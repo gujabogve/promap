@@ -1,4 +1,4 @@
-import { ShapeData, ShapeType, Point, ResourceData, KeyframeData, GroupAnimationOptions, TransitionEffect } from '../types';
+import { ShapeData, ShapeType, Point, ResourceData, KeyframeData, GroupAnimationOptions, TransitionEffect, GroupKeyframeData, ShapeSnapshot } from '../types';
 import '../types/promap-api';
 
 interface ProjectConfig {
@@ -10,8 +10,12 @@ interface ProjectConfig {
 	undoStack?: ShapeData[][];
 	redoStack?: ShapeData[][];
 	keyframes?: Record<string, KeyframeData[]>;
+	groupKeyframes?: Record<string, GroupKeyframeData[]>;
 	timelineDuration?: number;
 	groups?: Record<string, { name: string; shapeIds: string[]; animation?: GroupAnimationOptions }>;
+	projectorConfigs?: Record<number, { screenId: number | null }>;
+	projectorDisplayOptions?: Record<number, { showOutline: boolean; showPoints: boolean; showGrid: boolean; showFace: boolean }>;
+	shapeTemplates?: Array<{ id: string; name: string; points: Point[] }>;
 }
 
 type Listener = () => void;
@@ -35,18 +39,26 @@ class StateManager {
 	globalFps = 30;
 	resolution: Point = { x: 1920, y: 1080 };
 	private keyframes: Record<string, KeyframeData[]> = {};
+	private groupKeyframes: Record<string, GroupKeyframeData[]> = {};
 	timelineTime = 0;
 	timelinePlaying = false;
 	timelineDuration = 300000; // 5 minutes default
 	private timelineRafId: number | null = null;
 	private lastTickTime = 0;
 	externalOpen = false;
+	_audioLevel = 0;
+	_audioAboveThreshold = false;
+	_midiBpm = 0;
+	_midiActive = false;
 	externalShowOutline = false;
 	externalShowPoints = false;
 	externalShowGrid = false;
 	projectorDisplayOptions: Map<number, { showOutline: boolean; showPoints: boolean; showGrid: boolean; showFace: boolean }> = new Map();
+	projectorConfigs: Map<number, { screenId: number | null }> = new Map();
+	private nextProjectorId = 1;
 	audioSourceId: string | null = null;
 	hdmiSourceId: string | null = null;
+	shapeTemplates: Array<{ id: string; name: string; points: Point[] }> = [];
 
 	subscribe(listener: Listener): () => void {
 		this.listeners.add(listener);
@@ -68,7 +80,7 @@ class StateManager {
 		if (!this.externalOpen) return;
 
 		// Send full state including group animation configs
-		const groups: Record<string, { name: string; shapeIds: string[]; animation?: unknown; animationPlaying?: boolean; animationStartTime?: number }> = {};
+		const groups: Record<string, { name: string; shapeIds: string[]; animation?: unknown; animationPlaying?: boolean; animationStartTime?: number; _bpmAccumulator?: number; _randomOrder?: string[] }> = {};
 		for (const [id, g] of this.groups) {
 			groups[id] = {
 				name: g.name,
@@ -76,6 +88,8 @@ class StateManager {
 				animation: g.animation,
 				animationPlaying: g.animationPlaying,
 				animationStartTime: g.animationStartTime,
+				_bpmAccumulator: g._bpmAccumulator,
+				_randomOrder: g._randomOrder,
 			};
 		}
 
@@ -92,14 +106,46 @@ class StateManager {
 			showGrid: this.externalShowGrid,
 			projectorDisplay,
 			groups,
+			audioLevel: this._audioLevel,
+			audioAboveThreshold: this._audioAboveThreshold,
+			midiBpm: this._midiBpm,
+			midiActive: this._midiActive,
 		});
 		window.promap.syncExternal(data);
 	}
 
 	openProjectors: Set<number> = new Set();
 
+	addProjector(): number {
+		const id = this.nextProjectorId++;
+		this.projectorConfigs.set(id, { screenId: null });
+		this.projectorDisplayOptions.set(id, { showOutline: false, showPoints: false, showGrid: false, showFace: false });
+		this.notify();
+		return id;
+	}
+
+	removeProjector(id: number): void {
+		if (this.openProjectors.has(id)) {
+			this.closeExternalWindow(id);
+		}
+		this.projectorConfigs.delete(id);
+		this.projectorDisplayOptions.delete(id);
+		this.notify();
+	}
+
+	getProjectorIds(): number[] {
+		return [...this.projectorConfigs.keys()].sort();
+	}
+
+	setProjectorScreen(projectorId: number, screenId: number | null): void {
+		const config = this.projectorConfigs.get(projectorId);
+		if (config) config.screenId = screenId;
+	}
+
 	async openExternalWindow(projectorId: number): Promise<void> {
-		await window.promap.openExternalWindow(projectorId);
+		const config = this.projectorConfigs.get(projectorId);
+		const screenId = config?.screenId ?? undefined;
+		await window.promap.openExternalWindow(projectorId, screenId);
 		this.openProjectors.add(projectorId);
 		if (!this.projectorDisplayOptions.has(projectorId)) {
 			this.projectorDisplayOptions.set(projectorId, { showOutline: false, showPoints: false, showGrid: false, showFace: false });
@@ -355,7 +401,8 @@ class StateManager {
 		if (!group || !group.animation || group.animation.mode === 'none') return;
 		group.animationPlaying = true;
 		group.animationStartTime = Date.now();
-		group._bpmAccumulator = 0;
+		// Start accumulator mid-way through first fade-in so first shape is immediately visible
+		group._bpmAccumulator = 500;
 		group._bpmLastTick = undefined;
 
 		// Generate random order if needed
@@ -398,16 +445,19 @@ class StateManager {
 		if (audioLevel > 0.05) {
 			const speed = audioLevel * (group.animation.bpmSpeed ?? 3);
 			group._bpmAccumulator = (group._bpmAccumulator ?? 0) + delta * speed;
+			this.debouncedSyncExternal();
 		}
 	}
 
 	advanceGroupAnimation(groupId: string): void {
 		const group = this.groups.get(groupId);
-		if (!group || !group.animationPlaying || !group.animation || !group.animation.useBpm) return;
+		if (!group || !group.animationPlaying || !group.animation) return;
+		if (!group.animation.useBpm && !group.animation.useMidi) return;
 
 		// Advance by one cycle duration (matches the BPM cycle constant in getGroupAnimationState)
 		const cycleDuration = 1500;
 		group._bpmAccumulator = (group._bpmAccumulator ?? 0) + cycleDuration;
+		this.debouncedSyncExternal();
 	}
 
 	getGroupAnimationState(groupId: string): Map<string, number> | null {
@@ -416,14 +466,16 @@ class StateManager {
 
 		const anim = group.animation;
 
+		const useAccumulator = anim.useBpm || anim.useMidi;
+
 		let elapsed: number;
-		if (anim.useBpm) {
+		if (useAccumulator) {
 			elapsed = group._bpmAccumulator ?? 0;
 		} else {
 			elapsed = Date.now() - group.animationStartTime;
 		}
 
-		const cycleDuration = anim.useBpm
+		const cycleDuration = useAccumulator
 			? 1500
 			: anim.fadeDuration * 2 + anim.holdDuration;
 
@@ -463,7 +515,10 @@ class StateManager {
 		const activeIds = steps[stepIndex];
 
 		let opacity: number;
-		if (phaseTime < anim.fadeDuration) {
+		if (useAccumulator) {
+			// BPM/MIDI mode: snap transitions on beat
+			opacity = 1;
+		} else if (phaseTime < anim.fadeDuration) {
 			const t = anim.fadeDuration > 0 ? phaseTime / anim.fadeDuration : 1;
 			opacity = this.ease(t, anim.easing ?? 'linear');
 		} else if (phaseTime < anim.fadeDuration + anim.holdDuration) {
@@ -545,7 +600,7 @@ class StateManager {
 			ignoreGlobalPlayPause: false,
 			bpmSync: false,
 			midiSync: false,
-			effects: { blur: 0, glow: 0, colorCorrection: 0, distortion: 0, glitch: 0 },
+			effects: { blur: 0, glow: 0, colorCorrection: 0, distortion: 0, glitch: 0, pixelate: 0, rgbSplit: 0, invert: 0, sepia: 0, noise: 0, wave: 0, vignette: 0 },
 			visible: true,
 		};
 
@@ -618,7 +673,18 @@ class StateManager {
 		return this.keyframes;
 	}
 
-	insertKeyframe(shapeId: string): KeyframeData | null {
+	isShapeInGroup(shapeId: string): string | null {
+		for (const [groupId, group] of this.groups) {
+			if (group.shapeIds.includes(shapeId)) return groupId;
+		}
+		return null;
+	}
+
+	insertKeyframe(shapeId: string): KeyframeData | 'in-group' | null {
+		// Block if shape is in a group
+		const groupId = this.isShapeInGroup(shapeId);
+		if (groupId) return 'in-group';
+
 		const shape = this.shapes.find(s => s.id === shapeId);
 		if (!shape) return null;
 
@@ -637,12 +703,17 @@ class StateManager {
 				position: { ...shape.position },
 				rotation: shape.rotation,
 				size: { ...shape.size },
+				resource: shape.resource,
+				resourceOffset: { ...shape.resourceOffset },
+				resourceScale: shape.resourceScale,
 				fps: shape.fps,
 				loop: shape.loop,
 				playing: shape.playing,
 				ignoreGlobalPlayPause: shape.ignoreGlobalPlayPause,
 				bpmSync: shape.bpmSync,
+				midiSync: shape.midiSync,
 				effects: { ...shape.effects },
+				visible: shape.visible,
 			},
 			morphToNext: true,
 			easingType: 'linear',
@@ -682,11 +753,108 @@ class StateManager {
 		this.notify();
 	}
 
+	// Group keyframes
+
+	getGroupKeyframes(groupId: string): GroupKeyframeData[] {
+		return this.groupKeyframes[groupId] ?? [];
+	}
+
+	getAllGroupKeyframes(): Record<string, GroupKeyframeData[]> {
+		return this.groupKeyframes;
+	}
+
+	private captureShapeSnapshot(shape: ShapeData): ShapeSnapshot {
+		return {
+			points: structuredClone(shape.points),
+			position: { ...shape.position },
+			rotation: shape.rotation,
+			size: { ...shape.size },
+			resource: shape.resource,
+			resourceOffset: { ...shape.resourceOffset },
+			resourceScale: shape.resourceScale,
+			fps: shape.fps,
+			loop: shape.loop,
+			playing: shape.playing,
+			ignoreGlobalPlayPause: shape.ignoreGlobalPlayPause,
+			bpmSync: shape.bpmSync,
+			midiSync: shape.midiSync,
+			effects: { ...shape.effects },
+			visible: shape.visible,
+		};
+	}
+
+	insertGroupKeyframe(groupId: string): GroupKeyframeData | null {
+		const group = this.groups.get(groupId);
+		if (!group) return null;
+
+		if (!this.groupKeyframes[groupId]) this.groupKeyframes[groupId] = [];
+
+		// Remove existing keyframe at same time
+		this.groupKeyframes[groupId] = this.groupKeyframes[groupId].filter(
+			k => Math.abs(k.time - this.timelineTime) > 50
+		);
+
+		const shapeStates: Record<string, ShapeSnapshot> = {};
+		for (const shapeId of group.shapeIds) {
+			const shape = this.shapes.find(s => s.id === shapeId);
+			if (shape) shapeStates[shapeId] = this.captureShapeSnapshot(shape);
+		}
+
+		const kf: GroupKeyframeData = {
+			id: crypto.randomUUID(),
+			time: this.timelineTime,
+			shapeStates,
+			morphToNext: true,
+			easingType: 'linear',
+			holdTime: 0,
+			transitionEffect: 'none',
+		};
+
+		this.groupKeyframes[groupId].push(kf);
+		this.groupKeyframes[groupId].sort((a, b) => a.time - b.time);
+		this.notify();
+		return kf;
+	}
+
+	removeGroupKeyframe(groupId: string, keyframeId: string): void {
+		if (!this.groupKeyframes[groupId]) return;
+		this.groupKeyframes[groupId] = this.groupKeyframes[groupId].filter(k => k.id !== keyframeId);
+		if (this.groupKeyframes[groupId].length === 0) delete this.groupKeyframes[groupId];
+		this.notify();
+	}
+
+	moveGroupKeyframe(groupId: string, keyframeId: string, newTime: number): void {
+		const kfs = this.groupKeyframes[groupId];
+		if (!kfs) return;
+		const kf = kfs.find(k => k.id === keyframeId);
+		if (!kf) return;
+		kf.time = Math.max(0, Math.min(newTime, this.timelineDuration));
+		kfs.sort((a, b) => a.time - b.time);
+		this.notify();
+	}
+
+	updateGroupKeyframe(groupId: string, keyframeId: string, updates: Partial<Pick<GroupKeyframeData, 'morphToNext' | 'easingType' | 'holdTime' | 'transitionEffect'>>): void {
+		const kfs = this.groupKeyframes[groupId];
+		if (!kfs) return;
+		const kf = kfs.find(k => k.id === keyframeId);
+		if (!kf) return;
+		Object.assign(kf, updates);
+		this.notify();
+	}
+
+	private syncExternalDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+	debouncedSyncExternal(): void {
+		if (this.syncExternalDebounceTimer) clearTimeout(this.syncExternalDebounceTimer);
+		this.syncExternalDebounceTimer = setTimeout(() => this.syncExternal(), 100);
+	}
+
 	setTimelineTime(time: number): void {
 		this.timelineTime = Math.max(0, Math.min(time, this.timelineDuration));
 		this.applyKeyframes();
 		this.listeners.forEach(l => l());
-		this.syncExternal();
+
+		this.debouncedSyncExternal();
 	}
 
 	playTimeline(): void {
@@ -750,13 +918,13 @@ class StateManager {
 
 			if (!prev && next) {
 				// Before first keyframe — don't apply
-				return;
+				continue;
 			}
 
 			if (prev && !next) {
 				// After last keyframe — hold last state
 				this.applyShapeState(shape, prev.shapeState);
-				return;
+				continue;
 			}
 
 			if (prev && next) {
@@ -779,6 +947,55 @@ class StateManager {
 				}
 			}
 		}
+
+		// Apply group keyframes
+		for (const [groupId, keyframes] of Object.entries(this.groupKeyframes)) {
+			if (keyframes.length === 0) continue;
+			const group = this.groups.get(groupId);
+			if (!group) continue;
+
+			const t = this.timelineTime;
+
+			let prev: GroupKeyframeData | null = null;
+			let next: GroupKeyframeData | null = null;
+
+			for (let i = 0; i < keyframes.length; i++) {
+				if (keyframes[i].time <= t) prev = keyframes[i];
+				if (keyframes[i].time > t && !next) next = keyframes[i];
+			}
+
+			if (!prev && next) continue;
+
+			for (const shapeId of group.shapeIds) {
+				const shape = this.shapes.find(s => s.id === shapeId);
+				if (!shape) continue;
+
+				if (prev && !next) {
+					const ss = prev.shapeStates[shapeId];
+					if (ss) this.applyShapeState(shape, ss);
+				} else if (prev && next) {
+					const prevSS = prev.shapeStates[shapeId];
+					const nextSS = next.shapeStates[shapeId];
+					if (!prevSS) continue;
+
+					if (!prev.morphToNext || !nextSS) {
+						this.applyShapeState(shape, prevSS);
+					} else {
+						const span = next.time - prev.time;
+						const holdEnd = prev.time + prev.holdTime;
+						if (t <= holdEnd) {
+							this.applyShapeState(shape, prevSS);
+						} else {
+							const transitionSpan = span - prev.holdTime;
+							const progress = transitionSpan > 0 ? (t - holdEnd) / transitionSpan : 1;
+							const eased = this.ease(Math.min(1, Math.max(0, progress)), prev.easingType);
+							this.interpolateShape(shape, prevSS, nextSS, eased);
+							this.applyTransitionEffect(shape, prev.transitionEffect ?? 'none', eased);
+						}
+					}
+				}
+			}
+		}
 	}
 
 	private applyShapeState(shape: ShapeData, s: KeyframeData['shapeState']): void {
@@ -787,6 +1004,10 @@ class StateManager {
 		shape.size = { ...s.size };
 		shape.points = structuredClone(s.points);
 		shape.effects = { ...s.effects };
+		if (s.resource !== undefined) shape.resource = s.resource;
+		if (s.resourceOffset) shape.resourceOffset = { ...s.resourceOffset };
+		if (s.resourceScale !== undefined) shape.resourceScale = s.resourceScale;
+		if (s.visible !== undefined) shape.visible = s.visible;
 	}
 
 	private interpolateShape(
@@ -820,7 +1041,27 @@ class StateManager {
 			colorCorrection: a.effects.colorCorrection + (b.effects.colorCorrection - a.effects.colorCorrection) * t,
 			distortion: a.effects.distortion + (b.effects.distortion - a.effects.distortion) * t,
 			glitch: a.effects.glitch + (b.effects.glitch - a.effects.glitch) * t,
+			pixelate: (a.effects.pixelate ?? 0) + ((b.effects.pixelate ?? 0) - (a.effects.pixelate ?? 0)) * t,
+			rgbSplit: (a.effects.rgbSplit ?? 0) + ((b.effects.rgbSplit ?? 0) - (a.effects.rgbSplit ?? 0)) * t,
+			invert: (a.effects.invert ?? 0) + ((b.effects.invert ?? 0) - (a.effects.invert ?? 0)) * t,
+			sepia: (a.effects.sepia ?? 0) + ((b.effects.sepia ?? 0) - (a.effects.sepia ?? 0)) * t,
+			noise: (a.effects.noise ?? 0) + ((b.effects.noise ?? 0) - (a.effects.noise ?? 0)) * t,
+			wave: (a.effects.wave ?? 0) + ((b.effects.wave ?? 0) - (a.effects.wave ?? 0)) * t,
+			vignette: (a.effects.vignette ?? 0) + ((b.effects.vignette ?? 0) - (a.effects.vignette ?? 0)) * t,
 		};
+
+		// Non-interpolatable properties — snap at midpoint
+		shape.resource = t < 0.5 ? (a.resource ?? shape.resource) : (b.resource ?? shape.resource);
+		if (a.resourceOffset && b.resourceOffset) {
+			shape.resourceOffset = {
+				x: a.resourceOffset.x + (b.resourceOffset.x - a.resourceOffset.x) * t,
+				y: a.resourceOffset.y + (b.resourceOffset.y - a.resourceOffset.y) * t,
+			};
+		}
+		if (a.resourceScale !== undefined && b.resourceScale !== undefined) {
+			shape.resourceScale = a.resourceScale + (b.resourceScale - a.resourceScale) * t;
+		}
+		if (a.visible !== undefined) shape.visible = t < 0.5 ? a.visible : (b.visible ?? a.visible);
 	}
 
 	private applyTransitionEffect(shape: ShapeData, effect: TransitionEffect, progress: number): void {
@@ -876,6 +1117,28 @@ class StateManager {
 		return this.resources;
 	}
 
+	addShapeTemplate(name: string, points: Point[]): void {
+		this.shapeTemplates.push({ id: crypto.randomUUID(), name, points: structuredClone(points) });
+		this.notify();
+	}
+
+	removeShapeTemplate(id: string): void {
+		this.shapeTemplates = this.shapeTemplates.filter(t => t.id !== id);
+		this.notify();
+	}
+
+	createShapeFromTemplate(templateId: string): ShapeData | null {
+		const tmpl = this.shapeTemplates.find(t => t.id === templateId);
+		if (!tmpl) return null;
+		const shape = this.addShape('n-shape', tmpl.points.length);
+		this.updateShape(shape.id, {
+			name: tmpl.name,
+			points: structuredClone(tmpl.points),
+			size: { x: 300, y: 300 },
+		});
+		return shape;
+	}
+
 	addResource(resource: Omit<ResourceData, 'id'>): ResourceData {
 		const res: ResourceData = { ...resource, id: crypto.randomUUID() };
 		this.resources.push(res);
@@ -910,10 +1173,14 @@ class StateManager {
 			undoStack: this.undoStack,
 			redoStack: this.redoStack,
 			keyframes: this.keyframes,
+			groupKeyframes: this.groupKeyframes,
 			timelineDuration: this.timelineDuration,
 			groups: Object.fromEntries(
 				[...this.groups].map(([id, g]) => [id, { name: g.name, shapeIds: g.shapeIds, animation: g.animation }])
 			),
+			projectorConfigs: Object.fromEntries(this.projectorConfigs),
+			projectorDisplayOptions: Object.fromEntries(this.projectorDisplayOptions),
+			shapeTemplates: this.shapeTemplates,
 		};
 		return JSON.stringify(config, null, '\t');
 	}
@@ -928,8 +1195,13 @@ class StateManager {
 		this.undoStack = config.undoStack ?? [];
 		this.redoStack = config.redoStack ?? [];
 		this.keyframes = config.keyframes ?? {};
+		this.groupKeyframes = config.groupKeyframes ?? {};
 		this.timelineDuration = config.timelineDuration ?? 300000;
 		this.groups = new Map(Object.entries(config.groups ?? {}));
+		this.projectorConfigs = new Map(Object.entries(config.projectorConfigs ?? {}).map(([k, v]) => [Number(k), v]));
+		this.projectorDisplayOptions = new Map(Object.entries(config.projectorDisplayOptions ?? {}).map(([k, v]) => [Number(k), v]));
+		this.nextProjectorId = Math.max(0, ...this.projectorConfigs.keys()) + 1;
+		this.shapeTemplates = config.shapeTemplates ?? [];
 		this.selectedGroupId = null;
 		this.timelineTime = 0;
 		this.timelinePlaying = false;

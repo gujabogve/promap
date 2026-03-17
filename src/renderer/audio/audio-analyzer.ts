@@ -7,6 +7,7 @@ export class AudioAnalyzer {
 	private source: MediaStreamAudioSourceNode | null = null;
 	private stream: MediaStream | null = null;
 	private dataArray: Uint8Array | null = null;
+	private timeDomainData: Uint8Array | null = null;
 	private rafId: number | null = null;
 	private levelListeners: Set<LevelListener> = new Set();
 	private _level = 0;
@@ -92,12 +93,15 @@ export class AudioAnalyzer {
 		this.context = new AudioContext();
 		this.analyser = this.context.createAnalyser();
 		this.analyser.fftSize = 1024;
-		this.analyser.smoothingTimeConstant = 0.4;
+		this.analyser.smoothingTimeConstant = 0.3;
+		this.analyser.minDecibels = -90;
+		this.analyser.maxDecibels = -10;
 
 		this.source = this.context.createMediaStreamSource(this.stream);
 		this.source.connect(this.analyser);
 
 		this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+		this.timeDomainData = new Uint8Array(this.analyser.fftSize);
 		this.energyHistory = [];
 		this.beatTimes = [];
 		this._bpm = 0;
@@ -125,23 +129,26 @@ export class AudioAnalyzer {
 		}
 		this.analyser = null;
 		this.dataArray = null;
+		this.timeDomainData = null;
 		this._level = 0;
 		this._beatDetected = false;
 		this._bpm = 0;
 	}
 
 	private tick(): void {
-		if (!this._running || !this.analyser || !this.dataArray) return;
+		if (!this._running || !this.analyser || !this.dataArray || !this.timeDomainData) return;
 
-		this.analyser.getByteFrequencyData(this.dataArray);
-
-		// Calculate RMS level (0-1)
+		// Time domain for overall level (much more responsive than frequency)
+		this.analyser.getByteTimeDomainData(this.timeDomainData);
 		let sum = 0;
-		for (let i = 0; i < this.dataArray.length; i++) {
-			const normalized = this.dataArray[i] / 255;
-			sum += normalized * normalized;
+		for (let i = 0; i < this.timeDomainData.length; i++) {
+			const sample = (this.timeDomainData[i] - 128) / 128; // Center around 0, normalize to -1..1
+			sum += sample * sample;
 		}
-		this._level = Math.sqrt(sum / this.dataArray.length);
+		this._level = Math.sqrt(sum / this.timeDomainData.length);
+
+		// Frequency domain for spectrum visualization and beat detection
+		this.analyser.getByteFrequencyData(this.dataArray);
 
 		// Beat detection — focus on low frequencies (bass/kick)
 		let bassEnergy = 0;

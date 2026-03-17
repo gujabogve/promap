@@ -1,5 +1,6 @@
 import { state } from '../state/state-manager';
 import { ShapeData } from '../types';
+import { getStlCanvas } from '../utils/stl-renderer';
 
 export class MaskPositionModal extends HTMLElement {
 	private shapeIds: string[] = [];
@@ -87,6 +88,8 @@ export class MaskPositionModal extends HTMLElement {
 						<div id="mask-res-wrap" class="absolute border border-neutral-500/40" style="transform-origin: 0 0;">
 							${resource.type === 'video'
 								? `<video id="mask-resource" src="${resSrc}" loop muted playsinline preload="auto" class="block max-w-none"></video>`
+								: resource.type === 'stl'
+								? `<canvas id="mask-resource" width="512" height="512" class="block max-w-none"></canvas>`
 								: `<img id="mask-resource" src="${resSrc}" class="block max-w-none" draggable="false">`
 							}
 						</div>
@@ -123,16 +126,23 @@ export class MaskPositionModal extends HTMLElement {
 		this.classList.remove('hidden');
 		this.classList.add('flex');
 
-		const video = this.querySelector('#mask-resource') as HTMLVideoElement;
-		if (video?.tagName === 'VIDEO') {
-			video.addEventListener('loadeddata', () => this.layout(shapes), { once: true });
-			video.play().catch(() => {});
-		} else {
-			const img = this.querySelector('#mask-resource') as HTMLImageElement;
-			if (img?.complete) {
+		const resEl = this.querySelector('#mask-resource') as HTMLElement;
+		if (resEl?.tagName === 'VIDEO') {
+			(resEl as HTMLVideoElement).addEventListener('loadeddata', () => this.layout(shapes), { once: true });
+			(resEl as HTMLVideoElement).play().catch(() => {});
+		} else if (resEl?.tagName === 'CANVAS' && resource.type === 'stl') {
+			// Copy STL render to modal canvas
+			const stlCanvas = getStlCanvas(resource.id);
+			if (stlCanvas) {
+				const ctx = (resEl as HTMLCanvasElement).getContext('2d');
+				ctx?.drawImage(stlCanvas, 0, 0);
+			}
+		} else if (resEl?.tagName === 'IMG') {
+			const img = resEl as HTMLImageElement;
+			if (img.complete) {
 				this.layout(shapes);
 			} else {
-				img?.addEventListener('load', () => this.layout(shapes), { once: true });
+				img.addEventListener('load', () => this.layout(shapes), { once: true });
 			}
 		}
 

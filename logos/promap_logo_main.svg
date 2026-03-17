@@ -1,0 +1,130 @@
+<svg width="680" height="280" viewBox="0 0 680 280" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      @keyframes pulse { 0%,100%{opacity:0.45} 50%{opacity:1} }
+      .nd1 { animation: pulse 2.4s ease-in-out infinite; }
+      .nd2 { animation: pulse 2.4s ease-in-out infinite 0.4s; }
+      .nd3 { animation: pulse 2.4s ease-in-out infinite 0.8s; }
+      .nd4 { animation: pulse 2.4s ease-in-out infinite 1.2s; }
+      .nd5 { animation: pulse 2.4s ease-in-out infinite 1.6s; }
+      .nd6 { animation: pulse 2.4s ease-in-out infinite 2.0s; }
+      @media (prefers-reduced-motion: reduce) {
+        .nd1,.nd2,.nd3,.nd4,.nd5,.nd6 { animation: none; opacity: 0.8; }
+      }
+    </style>
+    <linearGradient id="projGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#00E5FF"/>
+      <stop offset="100%" stop-color="#7B2FFF"/>
+    </linearGradient>
+    <linearGradient id="textGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#00E5FF"/>
+      <stop offset="55%" stop-color="#A78BFF"/>
+      <stop offset="100%" stop-color="#7B2FFF"/>
+    </linearGradient>
+    <linearGradient id="cubeTop" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#00E5FF"/>
+      <stop offset="100%" stop-color="#7B2FFF"/>
+    </linearGradient>
+    <linearGradient id="cubeRight" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#7B2FFF"/>
+      <stop offset="100%" stop-color="#4A1A9A"/>
+    </linearGradient>
+    <linearGradient id="cubeLeft" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#00BFCC"/>
+      <stop offset="100%" stop-color="#006680"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <!-- Subtle glow for "Map" text — very light -->
+    <filter id="subtleglow" x="-15%" y="-15%" width="130%" height="130%">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="680" height="280" fill="#07050F"/>
+
+  <!-- Projection cone -->
+  <polygon points="140,118 290,210 260,250 100,165" fill="#7B2FFF" opacity="0.06"/>
+  <polygon points="140,118 310,195 290,210 140,118" fill="#00E5FF" opacity="0.04"/>
+  <line x1="140" y1="118" x2="290" y2="65"  stroke="#00E5FF" stroke-width="0.6" opacity="0.4"/>
+  <line x1="140" y1="118" x2="300" y2="100" stroke="#00E5FF" stroke-width="0.5" opacity="0.3"/>
+  <line x1="140" y1="118" x2="305" y2="135" stroke="#7B2FFF" stroke-width="0.6" opacity="0.4"/>
+  <line x1="140" y1="118" x2="295" y2="170" stroke="#7B2FFF" stroke-width="0.5" opacity="0.3"/>
+  <line x1="140" y1="118" x2="268" y2="190" stroke="#A78BFF" stroke-width="0.5" opacity="0.25"/>
+
+  <!-- CUBE -->
+  <polygon points="140,68 185,93 140,118 95,93"
+    fill="#0D0B1A" stroke="url(#cubeTop)" stroke-width="1.2" stroke-linejoin="round"/>
+  <polygon points="185,93 185,143 140,168 140,118"
+    fill="#060410" stroke="url(#cubeRight)" stroke-width="1.2" stroke-linejoin="round"/>
+  <polygon points="95,93 140,118 140,168 95,143"
+    fill="#090716" stroke="url(#cubeLeft)" stroke-width="1.2" stroke-linejoin="round"/>
+
+  <!-- Top face inner lines -->
+  <line x1="140" y1="68"  x2="140" y2="118" stroke="#00E5FF" stroke-width="0.5" opacity="0.35"/>
+  <line x1="117" y1="80"  x2="163" y2="105" stroke="#00E5FF" stroke-width="0.5" opacity="0.25"/>
+  <line x1="117" y1="105" x2="163" y2="80"  stroke="#00E5FF" stroke-width="0.5" opacity="0.25"/>
+
+  <!-- Corner nodes -->
+  <circle cx="140" cy="68"  r="2.5" fill="#00E5FF" filter="url(#glow)" class="nd1"/>
+  <circle cx="185" cy="93"  r="2"   fill="#00CCEE" filter="url(#glow)" class="nd2"/>
+  <circle cx="95"  cy="93"  r="2"   fill="#7B2FFF" filter="url(#glow)" class="nd3"/>
+  <circle cx="140" cy="118" r="2.2" fill="#A78BFF" filter="url(#glow)" class="nd4"/>
+  <circle cx="185" cy="143" r="2"   fill="#7B2FFF" class="nd5"/>
+  <circle cx="95"  cy="143" r="2"   fill="#6B22EE" class="nd6"/>
+  <circle cx="140" cy="168" r="2.5" fill="#7B2FFF" filter="url(#glow)" class="nd1"/>
+
+  <!-- Mapping grid -->
+  <line x1="80"  y1="175" x2="200" y2="175" stroke="#00E5FF" stroke-width="0.4" opacity="0.3"/>
+  <line x1="68"  y1="188" x2="212" y2="188" stroke="#00E5FF" stroke-width="0.4" opacity="0.22"/>
+  <line x1="56"  y1="201" x2="224" y2="201" stroke="#00E5FF" stroke-width="0.4" opacity="0.15"/>
+  <line x1="44"  y1="214" x2="236" y2="214" stroke="#00E5FF" stroke-width="0.3" opacity="0.1"/>
+  <line x1="104" y1="168" x2="92"  y2="214" stroke="#7B2FFF" stroke-width="0.4" opacity="0.22"/>
+  <line x1="118" y1="168" x2="108" y2="214" stroke="#7B2FFF" stroke-width="0.4" opacity="0.18"/>
+  <line x1="132" y1="168" x2="124" y2="214" stroke="#7B2FFF" stroke-width="0.4" opacity="0.15"/>
+  <line x1="146" y1="168" x2="140" y2="214" stroke="#7B2FFF" stroke-width="0.4" opacity="0.18"/>
+  <line x1="160" y1="168" x2="156" y2="214" stroke="#7B2FFF" stroke-width="0.4" opacity="0.15"/>
+  <line x1="174" y1="168" x2="172" y2="214" stroke="#7B2FFF" stroke-width="0.3" opacity="0.12"/>
+
+  <!-- Scan dashes -->
+  <line x1="140" y1="68"  x2="300" y2="68"  stroke="url(#projGrad)" stroke-width="0.8" opacity="0.5" stroke-dasharray="4 8"/>
+  <line x1="140" y1="168" x2="300" y2="168" stroke="url(#projGrad)" stroke-width="0.8" opacity="0.4" stroke-dasharray="4 8"/>
+
+  <!-- Grid node dots -->
+  <circle cx="140" cy="175" r="1.5" fill="#00E5FF" class="nd1"/>
+  <circle cx="155" cy="188" r="1.5" fill="#A78BFF" class="nd2"/>
+  <circle cx="125" cy="188" r="1.5" fill="#00E5FF" class="nd3"/>
+  <circle cx="168" cy="175" r="1.5" fill="#7B2FFF" class="nd4"/>
+  <circle cx="112" cy="175" r="1.5" fill="#7B2FFF" class="nd5"/>
+  <circle cx="140" cy="188" r="2"   fill="#A78BFF" class="nd6"/>
+
+  <!-- Wordmark — "Pro" light, "Map" bold with subtle glow only -->
+  <text x="230" y="135"
+    font-family="'Exo 2', 'Arial Black', sans-serif"
+    font-size="72" font-weight="300" letter-spacing="-1"
+    fill="url(#textGrad)" opacity="0.95">Pro</text>
+  <text x="344" y="135"
+    font-family="'Exo 2', 'Arial Black', sans-serif"
+    font-size="72" font-weight="900" letter-spacing="-2"
+    fill="url(#textGrad)" filter="url(#subtleglow)">Map</text>
+
+  <!-- Underline -->
+  <line x1="230" y1="147" x2="548" y2="147" stroke="url(#projGrad)" stroke-width="1.5" opacity="0.5"/>
+  <line x1="230" y1="149" x2="548" y2="149" stroke="url(#projGrad)" stroke-width="0.5" opacity="0.2"/>
+
+  <!-- Tagline -->
+  <text x="230" y="172"
+    font-family="'Exo 2', monospace, sans-serif"
+    font-size="11" font-weight="300" letter-spacing="4"
+    fill="#A78BFF" opacity="0.75">3D PROJECTION MAPPING</text>
+
+  <!-- Corner brackets -->
+  <path d="M14,14 L14,30 M14,14 L30,14" fill="none" stroke="#00E5FF" stroke-width="1.2" opacity="0.35" stroke-linecap="round"/>
+  <path d="M666,14 L666,30 M666,14 L650,14" fill="none" stroke="#7B2FFF" stroke-width="1.2" opacity="0.35" stroke-linecap="round"/>
+  <path d="M14,266 L14,250 M14,266 L30,266" fill="none" stroke="#00E5FF" stroke-width="1.2" opacity="0.25" stroke-linecap="round"/>
+  <path d="M666,266 L666,250 M666,266 L650,266" fill="none" stroke="#7B2FFF" stroke-width="1.2" opacity="0.25" stroke-linecap="round"/>
+</svg>

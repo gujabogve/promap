@@ -59,27 +59,9 @@ export class ControlsPanel extends HTMLElement {
 			}
 		});
 
-		// Displays modal
-		this.querySelector('#btn-displays')?.addEventListener('click', () => {
-			const modal = document.querySelector('projector-modal') as HTMLElement & { show(): void } | null;
-			if (modal) modal.show();
-		});
-
 		window.promap.onExternalWindowClosed((projectorId: number) => {
 			state.openProjectors.delete(projectorId);
 			state.externalOpen = state.openProjectors.size > 0;
-			// Update button
-			const btn = this.querySelector('#btn-displays') as HTMLElement;
-			if (btn) {
-				const count = state.openProjectors.size;
-				btn.textContent = `Displays${count > 0 ? ` (${count})` : ''}`;
-				btn.classList.toggle('bg-green-700', count > 0);
-				btn.classList.toggle('border-green-600', count > 0);
-				btn.classList.toggle('text-green-100', count > 0);
-				btn.classList.toggle('bg-neutral-800', count === 0);
-				btn.classList.toggle('border-neutral-600', count === 0);
-				btn.classList.toggle('text-neutral-300', count === 0);
-			}
 		});
 
 		// Resolution preset
@@ -149,7 +131,7 @@ export class ControlsPanel extends HTMLElement {
 	private render(): void {
 		this.innerHTML = `
 			<div class="flex items-center h-full gap-2">
-				<span class="font-bold text-sm text-neutral-100 mr-2">ProMap</span>
+				<img src="./assets/titlebar.svg" class="h-8 mr-2" alt="ProMap" draggable="false">
 				<div class="h-5 w-px bg-neutral-700"></div>
 
 				<button id="btn-save" class="px-2.5 py-1 text-xs bg-neutral-800 hover:bg-neutral-700 rounded border border-neutral-600 text-neutral-300">Save</button>
@@ -195,7 +177,6 @@ export class ControlsPanel extends HTMLElement {
 
 				<div class="flex-1"></div>
 
-				<button id="btn-displays" class="px-2.5 py-1 text-xs ${state.openProjectors.size > 0 ? 'bg-green-700 border-green-600 text-green-100' : 'bg-neutral-800 border-neutral-600 text-neutral-300'} hover:bg-neutral-700 rounded border">Displays${state.openProjectors.size > 0 ? ` (${state.openProjectors.size})` : ''}</button>
 				<button id="btn-shortcuts" class="px-2.5 py-1 text-xs bg-neutral-800 hover:bg-neutral-700 rounded border border-neutral-600 text-neutral-300" title="Shortcuts (?)">⌨</button>
 			</div>
 		`;

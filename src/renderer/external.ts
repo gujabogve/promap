@@ -1,6 +1,8 @@
 import './types/promap-api';
-import { Application, Graphics, Sprite, Texture, VideoSource, ImageSource, CanvasSource, Container } from 'pixi.js';
+import { Application, Graphics, Sprite, Texture, VideoSource, ImageSource, CanvasSource, Container, BlurFilter, ColorMatrixFilter, Filter } from 'pixi.js';
+import { PixelateFilter, RGBSplitFilter, DistortionFilter, GlitchFilter, VignetteFilter, NoiseColorFilter, WaveFilter } from './canvas/custom-filters';
 import { ShapeData, ResourceData, ColorOptions, TextOptions, GroupAnimationOptions, EasingType } from './types';
+import { createStlEntry, tickStlEntries, updateStlRotationSpeed } from './utils/stl-renderer';
 
 interface GroupState {
 	name: string;
@@ -8,6 +10,8 @@ interface GroupState {
 	animation?: GroupAnimationOptions;
 	animationPlaying?: boolean;
 	animationStartTime?: number;
+	_bpmAccumulator?: number;
+	_randomOrder?: string[];
 }
 
 interface ExternalState {
@@ -18,6 +22,10 @@ interface ExternalState {
 	showGrid: boolean;
 	projectorDisplay?: Record<number, { showOutline: boolean; showPoints: boolean; showGrid: boolean; showFace: boolean }>;
 	groups: Record<string, GroupState>;
+	audioLevel?: number;
+	audioAboveThreshold?: boolean;
+	midiBpm?: number;
+	midiActive?: boolean;
 }
 
 const OUTLINE_COLOR = 0xffffff;
@@ -29,6 +37,8 @@ class ExternalRenderer {
 	private projectorId: number;
 	private textureCache: Map<string, Texture> = new Map();
 	private videoEntries: Map<string, { element: HTMLVideoElement; source: VideoSource; texture: Texture }> = new Map();
+	private textEntries: Map<string, { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D; source: CanvasSource; texture: Texture; options: TextOptions; offset: number; width: number; textWidth: number }> = new Map();
+	private colorEntries: Map<string, { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D; source: CanvasSource; texture: Texture; options: ColorOptions; startTime: number }> = new Map();
 	private loadingTextures: Set<string> = new Set();
 	private currentState: ExternalState | null = null;
 
@@ -37,6 +47,9 @@ class ExternalRenderer {
 	private shapesLayer: Container;
 	private needsRebuild = false;
 	private randomOrders: Map<string, string[]> = new Map();
+	private resourceFingerprints: Map<string, string> = new Map();
+	private waveFilterCache: Map<string, WaveFilter> = new Map();
+	private glitchFilterCache: Map<string, GlitchFilter> = new Map();
 
 	constructor(app: Application, projectorId = 1) {
 		this.app = app;
@@ -50,7 +63,39 @@ class ExternalRenderer {
 		this.app.ticker.add(() => this.tick());
 
 		window.promap.onStateUpdate((data: string) => {
-			this.currentState = JSON.parse(data);
+			const newState = JSON.parse(data) as ExternalState;
+
+			// Detect resource changes — clear stale textures
+			if (newState.resources) {
+				for (const res of newState.resources) {
+					const fp = JSON.stringify({
+						src: res.src,
+						colorOptions: res.colorOptions,
+						textOptions: res.textOptions,
+					});
+					const oldFp = this.resourceFingerprints.get(res.id);
+					if (oldFp && oldFp !== fp) {
+						// Resource changed — clear cached texture
+						this.textureCache.delete(res.id);
+						this.loadingTextures.delete(res.id);
+						this.videoEntries.delete(res.id);
+					}
+					this.resourceFingerprints.set(res.id, fp);
+				}
+
+				// Remove fingerprints for deleted resources
+				const currentIds = new Set(newState.resources.map(r => r.id));
+				for (const id of this.resourceFingerprints.keys()) {
+					if (!currentIds.has(id)) {
+						this.resourceFingerprints.delete(id);
+						this.textureCache.delete(id);
+						this.loadingTextures.delete(id);
+						this.videoEntries.delete(id);
+					}
+				}
+			}
+
+			this.currentState = newState;
 			this.needsRebuild = true;
 		});
 	}
@@ -60,6 +105,54 @@ class ExternalRenderer {
 		for (const entry of this.videoEntries.values()) {
 			if (!entry.element.paused) {
 				entry.source.update();
+			}
+		}
+
+		// Update time-based filters
+		for (const wf of this.waveFilterCache.values()) wf.update();
+		for (const gf of this.glitchFilterCache.values()) gf.update();
+
+		// Update animated color textures
+		for (const entry of this.colorEntries.values()) {
+			this.renderColorCanvas(entry);
+			entry.source.update();
+		}
+
+		// Update STL rotation speeds from state and tick playing ones
+		if (this.currentState) {
+			const st = this.currentState;
+			const playingStlIds = new Set<string>();
+			const stlSpeedMultipliers = new Map<string, number>();
+			for (const shape of st.shapes) {
+				if (shape.playing && shape.resource) {
+					const res = st.resources.find(r => r.id === shape.resource);
+					if (res?.type === 'stl') {
+						updateStlRotationSpeed(res.id, res.stlOptions?.rotationSpeed ?? 1);
+						playingStlIds.add(res.id);
+						if (shape.bpmSync || shape.midiSync) {
+							let mult = 0;
+							if (shape.bpmSync && st.audioAboveThreshold) {
+								mult = Math.max(0.5, (st.audioLevel ?? 0) * 10);
+							} else if (shape.midiSync && st.midiActive && (st.midiBpm ?? 0) > 0) {
+								mult = (st.midiBpm ?? 0) / 120;
+							}
+							stlSpeedMultipliers.set(res.id, mult);
+						}
+					}
+				}
+			}
+			tickStlEntries(playingStlIds, stlSpeedMultipliers);
+		}
+
+		// Animate marquee text
+		if (this.currentState) {
+			for (const [resourceId, entry] of this.textEntries) {
+				if (!entry.options.marquee) continue;
+				const shape = this.currentState.shapes.find(s => s.resource === resourceId && s.playing);
+				if (shape) {
+					this.renderMarqueeCanvas(entry);
+					entry.source.update();
+				}
 			}
 		}
 
@@ -158,6 +251,12 @@ class ExternalRenderer {
 				container.rotation = (shape.rotation * Math.PI) / 180;
 			}
 
+			// Apply effects
+			const filters = this.buildFilters(shape);
+			if (filters.length > 0) {
+				container.filters = filters;
+			}
+
 			this.shapeContainers.set(shape.id, container);
 			this.shapesLayer.addChild(container);
 		}
@@ -192,8 +291,18 @@ class ExternalRenderer {
 			const anim = group.animation;
 			if (anim.mode === 'none') continue;
 
-			const elapsed = Date.now() - group.animationStartTime;
-			const cycleDuration = anim.fadeDuration * 2 + anim.holdDuration;
+			const useAccumulator = anim.useBpm || anim.useMidi;
+
+			let elapsed: number;
+			if (useAccumulator) {
+				elapsed = group._bpmAccumulator ?? 0;
+			} else {
+				elapsed = Date.now() - group.animationStartTime;
+			}
+
+			const cycleDuration = useAccumulator
+				? 1500
+				: anim.fadeDuration * 2 + anim.holdDuration;
 			if (cycleDuration <= 0) continue;
 
 			// Filter visible shapes
@@ -207,17 +316,10 @@ class ExternalRenderer {
 			let steps: string[][];
 			if (anim.mode === 'from-middle') {
 				steps = this.getFromMiddlePairs(visibleIds);
+			} else if (anim.mode === 'random' && group._randomOrder) {
+				steps = group._randomOrder.filter(id => visibleIds.includes(id)).map(id => [id]);
 			} else if (anim.mode === 'random') {
-				const key = group.shapeIds.join(',') + ':' + group.animationStartTime;
-				if (!this.randomOrders.has(key)) {
-					const shuffled = [...visibleIds];
-					for (let i = shuffled.length - 1; i > 0; i--) {
-						const j = Math.floor(Math.random() * (i + 1));
-						[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-					}
-					this.randomOrders.set(key, shuffled);
-				}
-				steps = this.randomOrders.get(key)!.map(id => [id]);
+				steps = visibleIds.map(id => [id]);
 			} else {
 				steps = visibleIds.map(id => [id]);
 			}
@@ -232,7 +334,10 @@ class ExternalRenderer {
 			const activeIds = steps[stepIndex];
 
 			let opacity: number;
-			if (phaseTime < anim.fadeDuration) {
+			if (useAccumulator) {
+				// BPM/MIDI mode: snap transitions, full opacity for active step
+				opacity = 1;
+			} else if (phaseTime < anim.fadeDuration) {
 				opacity = anim.fadeDuration > 0 ? phaseTime / anim.fadeDuration : 1;
 			} else if (phaseTime < anim.fadeDuration + anim.holdDuration) {
 				opacity = 1;
@@ -306,6 +411,97 @@ class ExternalRenderer {
 		return steps;
 	}
 
+	private buildFilters(shape: ShapeData): Filter[] {
+		const filters: Filter[] = [];
+		const fx = shape.effects;
+
+		if (fx.blur > 0) {
+			const blur = new BlurFilter();
+			blur.strength = fx.blur * 0.2;
+			filters.push(blur);
+		}
+
+		if (fx.glow > 0) {
+			const glow = new BlurFilter();
+			glow.strength = fx.glow * 0.3;
+			filters.push(glow);
+			const bright = new ColorMatrixFilter();
+			bright.brightness(1 + fx.glow * 0.01, false);
+			filters.push(bright);
+		}
+
+		if (fx.colorCorrection > 0) {
+			const cm = new ColorMatrixFilter();
+			cm.saturate(1 + fx.colorCorrection * 0.02, false);
+			cm.contrast(1 + fx.colorCorrection * 0.005, false);
+			filters.push(cm);
+		}
+
+		if (fx.distortion > 0) {
+			filters.push(new DistortionFilter(fx.distortion * 0.03));
+		}
+
+		if (fx.glitch > 0) {
+			let gf = this.glitchFilterCache.get(shape.id);
+			if (!gf) {
+				gf = new GlitchFilter(fx.glitch);
+				this.glitchFilterCache.set(shape.id, gf);
+			}
+			gf.amount = fx.glitch;
+			filters.push(gf);
+		} else {
+			this.glitchFilterCache.delete(shape.id);
+		}
+
+		if ((fx.pixelate ?? 0) > 0) {
+			filters.push(new PixelateFilter(fx.pixelate * 0.15 + 1));
+		}
+
+		if ((fx.rgbSplit ?? 0) > 0) {
+			filters.push(new RGBSplitFilter(fx.rgbSplit * 0.1));
+		}
+
+		if ((fx.invert ?? 0) > 0) {
+			const cm = new ColorMatrixFilter();
+			const t = fx.invert / 100;
+			cm.matrix[0] = 1 - 2 * t;
+			cm.matrix[6] = 1 - 2 * t;
+			cm.matrix[12] = 1 - 2 * t;
+			cm.matrix[4] = t;
+			cm.matrix[9] = t;
+			cm.matrix[14] = t;
+			filters.push(cm);
+		}
+
+		if ((fx.sepia ?? 0) > 0) {
+			const cm = new ColorMatrixFilter();
+			cm.sepia(fx.sepia / 100, false);
+			filters.push(cm);
+		}
+
+		if ((fx.noise ?? 0) > 0) {
+			filters.push(new NoiseColorFilter(fx.noise * 0.01));
+		}
+
+		if ((fx.wave ?? 0) > 0) {
+			let wf = this.waveFilterCache.get(shape.id);
+			if (!wf) {
+				wf = new WaveFilter(fx.wave);
+				this.waveFilterCache.set(shape.id, wf);
+			}
+			wf.amount = fx.wave;
+			filters.push(wf);
+		} else {
+			this.waveFilterCache.delete(shape.id);
+		}
+
+		if ((fx.vignette ?? 0) > 0) {
+			filters.push(new VignetteFilter(fx.vignette * 0.01));
+		}
+
+		return filters;
+	}
+
 	private getShapeCenter(shape: ShapeData): { x: number; y: number } {
 		if (shape.type === 'circle') {
 			return { x: shape.position.x + shape.size.x / 2, y: shape.position.y + shape.size.y / 2 };
@@ -339,8 +535,8 @@ class ExternalRenderer {
 
 		if (shape.projectionType === 'masked') {
 			const offset = shape.resourceOffset ?? { x: 0, y: 0 };
-			sprite.x = offset.x;
-			sprite.y = offset.y;
+			sprite.x = bounds.x + offset.x;
+			sprite.y = bounds.y + offset.y;
 			sprite.scale.set(shape.resourceScale ?? 1);
 		} else if (shape.projectionType === 'mapped') {
 			const offset = shape.resourceOffset ?? { x: 0, y: 0 };
@@ -391,6 +587,7 @@ class ExternalRenderer {
 			img.src = resource.src;
 		} else if (resource.type === 'video') {
 			const video = document.createElement('video');
+			video.crossOrigin = 'anonymous';
 			video.src = resource.src;
 			video.loop = true;
 			video.muted = true;
@@ -405,11 +602,23 @@ class ExternalRenderer {
 			});
 			video.addEventListener('error', () => this.loadingTextures.delete(resource.id));
 		} else if (resource.type === 'text' && resource.textOptions) {
-			this.textureCache.set(resource.id, this.createTextTexture(resource.textOptions));
+			this.textureCache.set(resource.id, this.createTextTexture(resource.textOptions, resource.id));
 			this.loadingTextures.delete(resource.id);
 			this.needsRebuild = true;
 		} else if (resource.type === 'color' && resource.colorOptions) {
-			this.textureCache.set(resource.id, this.createColorTexture(resource.colorOptions));
+			if (resource.colorOptions.mode === 'animated') {
+				const canvas = document.createElement('canvas');
+				canvas.width = 256; canvas.height = 256;
+				const ctx = canvas.getContext('2d')!;
+				const source = new CanvasSource({ resource: canvas });
+				const texture = new Texture({ source });
+				const entry = { canvas, ctx, source, texture, options: resource.colorOptions, startTime: Date.now() };
+				this.colorEntries.set(resource.id, entry);
+				this.renderColorCanvas(entry);
+				this.textureCache.set(resource.id, texture);
+			} else {
+				this.textureCache.set(resource.id, this.createColorTexture(resource.colorOptions));
+			}
 			this.loadingTextures.delete(resource.id);
 			this.needsRebuild = true;
 		} else if (resource.type === 'text' && resource.src) {
@@ -422,31 +631,157 @@ class ExternalRenderer {
 			};
 			img.onerror = () => this.loadingTextures.delete(resource.id);
 			img.src = resource.src;
+		} else if (resource.type === 'stl') {
+			const xhr = new XMLHttpRequest();
+			xhr.open('GET', resource.src);
+			xhr.responseType = 'arraybuffer';
+			xhr.onload = () => {
+				const speed = resource.stlOptions?.rotationSpeed ?? 1;
+				const { texture } = createStlEntry(resource.id, xhr.response as ArrayBuffer, speed);
+				this.textureCache.set(resource.id, texture);
+				this.loadingTextures.delete(resource.id);
+				this.needsRebuild = true;
+			};
+			xhr.onerror = () => this.loadingTextures.delete(resource.id);
+			xhr.send();
 		}
 	}
 
-	private createTextTexture(opts: TextOptions): Texture {
+	private createTextTexture(opts: TextOptions, resourceId?: string): Texture {
 		const canvas = document.createElement('canvas');
 		const ctx = canvas.getContext('2d')!;
 		const font = `${opts.italic ? 'italic ' : ''}${opts.bold ? 'bold ' : ''}${opts.fontSize}px ${opts.fontFamily}`;
 		ctx.font = font;
 		const pad = opts.padding + opts.strokeWidth;
-		canvas.width = Math.ceil(ctx.measureText(opts.text).width + pad * 2);
-		canvas.height = Math.ceil(opts.fontSize * 1.4 + pad * 2);
+		const textWidth = ctx.measureText(opts.text).width;
+
+		let w = Math.ceil(textWidth + pad * 2);
+		const h = Math.ceil(opts.fontSize * 1.4 + pad * 2);
+		if (opts.marquee && (opts.marqueeDirection === 'left' || opts.marqueeDirection === 'right')) {
+			w = Math.max(w, 600);
+		}
+		canvas.width = w;
+		canvas.height = h;
+
+		// For marquee, create a tracked entry
+		if (opts.marquee && resourceId) {
+			const source = new CanvasSource({ resource: canvas });
+			const texture = new Texture({ source });
+			this.textEntries.set(resourceId, {
+				canvas, ctx, source, texture, options: opts,
+				offset: 0, width: w, textWidth,
+			});
+			this.renderMarqueeCanvas(this.textEntries.get(resourceId)!);
+			return texture;
+		}
+
+		// Static text
 		if (opts.backgroundColor && opts.backgroundColor !== 'transparent' && opts.backgroundColor !== '#00000000') {
 			ctx.fillStyle = opts.backgroundColor;
-			ctx.fillRect(0, 0, canvas.width, canvas.height);
+			ctx.fillRect(0, 0, w, h);
 		}
 		ctx.font = font;
 		ctx.textBaseline = 'middle';
 		ctx.globalAlpha = opts.opacity / 100;
 		let x = pad;
-		if (opts.alignment === 'center') { ctx.textAlign = 'center'; x = canvas.width / 2; }
-		else if (opts.alignment === 'right') { ctx.textAlign = 'right'; x = canvas.width - pad; }
-		if (opts.strokeWidth > 0) { ctx.strokeStyle = opts.strokeColor; ctx.lineWidth = opts.strokeWidth; ctx.strokeText(opts.text, x, canvas.height / 2); }
+		if (opts.alignment === 'center') { ctx.textAlign = 'center'; x = w / 2; }
+		else if (opts.alignment === 'right') { ctx.textAlign = 'right'; x = w - pad; }
+		if (opts.strokeWidth > 0) { ctx.strokeStyle = opts.strokeColor; ctx.lineWidth = opts.strokeWidth; ctx.strokeText(opts.text, x, h / 2); }
 		ctx.fillStyle = opts.color;
-		ctx.fillText(opts.text, x, canvas.height / 2);
+		ctx.fillText(opts.text, x, h / 2);
 		return new Texture({ source: new CanvasSource({ resource: canvas }) });
+	}
+
+	private renderMarqueeCanvas(entry: { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D; options: TextOptions; offset: number; width: number; textWidth: number }): void {
+		const { ctx, canvas, options } = entry;
+		const w = canvas.width;
+		const h = canvas.height;
+		ctx.clearRect(0, 0, w, h);
+
+		if (options.backgroundColor && options.backgroundColor !== 'transparent' && options.backgroundColor !== '#00000000') {
+			ctx.fillStyle = options.backgroundColor;
+			ctx.fillRect(0, 0, w, h);
+		}
+
+		const font = `${options.italic ? 'italic ' : ''}${options.bold ? 'bold ' : ''}${options.fontSize}px ${options.fontFamily}`;
+		ctx.font = font;
+		ctx.textBaseline = 'middle';
+		ctx.globalAlpha = options.opacity / 100;
+
+		const pad = options.padding + options.strokeWidth;
+		let x = pad;
+		const y = h / 2;
+
+		const speed = (options.marqueeSpeed ?? 50) / 60;
+		entry.offset += speed;
+
+		const dir = options.marqueeDirection ?? 'left';
+		ctx.textAlign = 'left';
+
+		if (dir === 'left') {
+			const totalW = entry.textWidth + w;
+			x = w - (entry.offset % totalW);
+		} else if (dir === 'right') {
+			const totalW = entry.textWidth + w;
+			x = -entry.textWidth + (entry.offset % totalW);
+		}
+
+		if (options.strokeWidth > 0) {
+			ctx.strokeStyle = options.strokeColor;
+			ctx.lineWidth = options.strokeWidth;
+			ctx.strokeText(options.text, x, y);
+		}
+		ctx.fillStyle = options.color;
+		ctx.fillText(options.text, x, y);
+		ctx.globalAlpha = 1;
+	}
+
+	private renderColorCanvas(entry: { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D; options: ColorOptions; startTime: number }): void {
+		const { ctx, canvas, options } = entry;
+		ctx.clearRect(0, 0, canvas.width, canvas.height);
+		if (options.mode === 'animated') {
+			const elapsed = Date.now() - entry.startTime;
+			ctx.fillStyle = this.getAnimatedColorValue(options, elapsed);
+		} else if (options.mode === 'solid') {
+			ctx.fillStyle = options.color;
+		} else {
+			ctx.fillStyle = '#000';
+		}
+		ctx.fillRect(0, 0, canvas.width, canvas.height);
+	}
+
+	private getAnimatedColorValue(options: ColorOptions, elapsed: number): string {
+		const kfs = [...options.animatedKeyframes].sort((a, b) => a.time - b.time);
+		if (kfs.length === 0) return '#000000';
+		if (kfs.length === 1) return kfs[0].color;
+
+		let progress = (elapsed % options.animatedDuration) / options.animatedDuration * 100;
+		if (!options.animatedLoop && elapsed >= options.animatedDuration) {
+			progress = 100;
+		}
+
+		let prev = kfs[0];
+		let next = kfs[kfs.length - 1];
+		for (let i = 0; i < kfs.length - 1; i++) {
+			if (progress >= kfs[i].time && progress <= kfs[i + 1].time) {
+				prev = kfs[i];
+				next = kfs[i + 1];
+				break;
+			}
+		}
+
+		const span = next.time - prev.time;
+		const t = span > 0 ? (progress - prev.time) / span : 0;
+		const ar = parseInt(prev.color.slice(1, 3), 16);
+		const ag = parseInt(prev.color.slice(3, 5), 16);
+		const ab = parseInt(prev.color.slice(5, 7), 16);
+		const br = parseInt(next.color.slice(1, 3), 16);
+		const bg = parseInt(next.color.slice(3, 5), 16);
+		const bb = parseInt(next.color.slice(5, 7), 16);
+		const r = Math.round(ar + (br - ar) * t);
+		const g = Math.round(ag + (bg - ag) * t);
+		const b = Math.round(ab + (bb - ab) * t);
+		return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
 	}
 
 	private createColorTexture(opts: ColorOptions): Texture {

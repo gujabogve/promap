@@ -1,0 +1,48 @@
+<svg width="120" height="48" viewBox="0 0 120 48" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="tg1" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#00E5FF"/>
+      <stop offset="55%" stop-color="#A78BFF"/>
+      <stop offset="100%" stop-color="#7B2FFF"/>
+    </linearGradient>
+    <linearGradient id="cubeTop" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#00E5FF"/>
+      <stop offset="100%" stop-color="#7B2FFF"/>
+    </linearGradient>
+    <linearGradient id="cubeRight" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#7B2FFF"/>
+      <stop offset="100%" stop-color="#4A1A9A"/>
+    </linearGradient>
+    <linearGradient id="cubeLeft" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#00BFCC"/>
+      <stop offset="100%" stop-color="#006680"/>
+    </linearGradient>
+    <filter id="gs" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="1.2" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Cube icon -->
+  <polygon points="24,22 35,28 24,34 13,28"
+    fill="#0D0B1E" stroke="url(#cubeTop)" stroke-width="1" stroke-linejoin="round"/>
+  <polygon points="35,28 35,40 24,46 24,34"
+    fill="#07051A" stroke="url(#cubeRight)" stroke-width="1" stroke-linejoin="round"/>
+  <polygon points="13,28 24,34 24,46 13,40"
+    fill="#0A0720" stroke="url(#cubeLeft)" stroke-width="1" stroke-linejoin="round"/>
+  <circle cx="24" cy="22" r="1.8" fill="#00E5FF" filter="url(#gs)"/>
+  <circle cx="35" cy="28" r="1.4" fill="#00CCEE"/>
+  <circle cx="13" cy="28" r="1.4" fill="#7B2FFF"/>
+  <circle cx="24" cy="34" r="1.4" fill="#A78BFF" filter="url(#gs)"/>
+  <circle cx="24" cy="46" r="1.8" fill="#7B2FFF" filter="url(#gs)"/>
+
+  <!-- Wordmark -->
+  <text x="48" y="31"
+    font-family="'Exo 2', 'Arial Black', sans-serif"
+    font-size="20" font-weight="300" letter-spacing="-0.3"
+    fill="#00CFEE">Pro</text>
+  <text x="80" y="31"
+    font-family="'Exo 2', 'Arial Black', sans-serif"
+    font-size="20" font-weight="900" letter-spacing="-0.8"
+    fill="url(#tg1)">Map</text>
+</svg>

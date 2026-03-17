@@ -9,11 +9,18 @@ export interface ShapeEffects {
 	colorCorrection: number;
 	distortion: number;
 	glitch: number;
+	pixelate: number;
+	rgbSplit: number;
+	invert: number;
+	sepia: number;
+	noise: number;
+	wave: number;
+	vignette: number;
 }
 
 export type ShapeType = 'circle' | 'triangle' | 'square' | 'n-shape';
 
-export type ResourceType = 'video' | 'image' | 'text' | 'color';
+export type ResourceType = 'video' | 'image' | 'text' | 'color' | 'stl';
 
 export type MarqueeDirection = 'left' | 'right' | 'up' | 'down';
 export type TextAlign = 'left' | 'center' | 'right';
@@ -46,6 +53,11 @@ export interface ResourceData {
 	thumbnail?: string;
 	textOptions?: TextOptions;
 	colorOptions?: ColorOptions;
+	stlOptions?: StlOptions;
+}
+
+export interface StlOptions {
+	rotationSpeed: number;
 }
 
 export type ColorMode = 'solid' | 'gradient' | 'animated';
@@ -96,7 +108,19 @@ export type TransitionEffect = 'none' | 'fade' | 'flash' | 'dissolve';
 export interface KeyframeData {
 	id: string;
 	time: number;
-	shapeState: Omit<ShapeData, 'id' | 'name' | 'type' | 'zIndex' | 'resource' | 'projector' | 'projectionType'>;
+	shapeState: Omit<ShapeData, 'id' | 'name' | 'type' | 'zIndex' | 'projector' | 'projectionType'>;
+	morphToNext: boolean;
+	easingType: EasingType;
+	holdTime: number;
+	transitionEffect: TransitionEffect;
+}
+
+export type ShapeSnapshot = Omit<ShapeData, 'id' | 'name' | 'type' | 'zIndex' | 'projector' | 'projectionType'>;
+
+export interface GroupKeyframeData {
+	id: string;
+	time: number;
+	shapeStates: Record<string, ShapeSnapshot>; // shapeId -> state
 	morphToNext: boolean;
 	easingType: EasingType;
 	holdTime: number;
