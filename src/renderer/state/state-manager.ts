@@ -44,6 +44,7 @@ class StateManager {
 	externalShowOutline = false;
 	externalShowPoints = false;
 	externalShowGrid = false;
+	projectorDisplayOptions: Map<number, { showOutline: boolean; showPoints: boolean; showGrid: boolean; showFace: boolean }> = new Map();
 	audioSourceId: string | null = null;
 	hdmiSourceId: string | null = null;
 
@@ -78,28 +79,60 @@ class StateManager {
 			};
 		}
 
+		const projectorDisplay: Record<number, { showOutline: boolean; showPoints: boolean; showGrid: boolean; showFace: boolean }> = {};
+		for (const [id, opts] of this.projectorDisplayOptions) {
+			projectorDisplay[id] = opts;
+		}
+
 		const data = JSON.stringify({
 			shapes: this.shapes.sort((a, b) => a.zIndex - b.zIndex),
 			resources: this.resources,
 			showOutline: this.externalShowOutline,
 			showPoints: this.externalShowPoints,
 			showGrid: this.externalShowGrid,
+			projectorDisplay,
 			groups,
 		});
 		window.promap.syncExternal(data);
 	}
 
-	async toggleExternalWindow(): Promise<void> {
-		if (this.externalOpen) {
-			await window.promap.closeExternalWindow();
-			this.externalOpen = false;
-		} else {
-			await window.promap.openExternalWindow();
-			this.externalOpen = true;
-			// Send initial state after a short delay for window to load
-			setTimeout(() => this.syncExternal(), 500);
+	openProjectors: Set<number> = new Set();
+
+	async openExternalWindow(projectorId: number): Promise<void> {
+		await window.promap.openExternalWindow(projectorId);
+		this.openProjectors.add(projectorId);
+		if (!this.projectorDisplayOptions.has(projectorId)) {
+			this.projectorDisplayOptions.set(projectorId, { showOutline: false, showPoints: false, showGrid: false, showFace: false });
 		}
+		this.externalOpen = true;
+		setTimeout(() => this.syncExternal(), 500);
 		this.listeners.forEach(l => l());
+	}
+
+	async closeExternalWindow(projectorId: number): Promise<void> {
+		await window.promap.closeExternalWindow(projectorId);
+		this.openProjectors.delete(projectorId);
+		this.externalOpen = this.openProjectors.size > 0;
+		this.listeners.forEach(l => l());
+	}
+
+	async toggleExternalWindow(projectorId?: number): Promise<void> {
+		if (projectorId !== undefined) {
+			if (this.openProjectors.has(projectorId)) {
+				await this.closeExternalWindow(projectorId);
+			} else {
+				await this.openExternalWindow(projectorId);
+			}
+		} else {
+			// Toggle all
+			if (this.externalOpen) {
+				for (const id of [...this.openProjectors]) {
+					await this.closeExternalWindow(id);
+				}
+			} else {
+				await this.openExternalWindow(1);
+			}
+		}
 	}
 
 	setResolution(resolution: Point): void {
@@ -109,6 +142,14 @@ class StateManager {
 
 	setExternalToggle(key: 'externalShowOutline' | 'externalShowPoints' | 'externalShowGrid', value: boolean): void {
 		this[key] = value;
+		// Apply to all open projectors
+		for (const id of this.openProjectors) {
+			const opts = this.projectorDisplayOptions.get(id) ?? { showOutline: false, showPoints: false, showGrid: false, showFace: false };
+			if (key === 'externalShowOutline') opts.showOutline = value;
+			else if (key === 'externalShowPoints') opts.showPoints = value;
+			else if (key === 'externalShowGrid') opts.showGrid = value;
+			this.projectorDisplayOptions.set(id, opts);
+		}
 		this.syncExternal();
 	}
 
@@ -291,6 +332,24 @@ class StateManager {
 		this.notify();
 	}
 
+	toggleAllGroupAnimations(play: boolean): void {
+		for (const [groupId, group] of this.groups) {
+			if (!group.animation || group.animation.mode === 'none') continue;
+			if (play && !group.animationPlaying) {
+				this.playGroupAnimation(groupId);
+			} else if (!play && group.animationPlaying) {
+				this.stopGroupAnimation(groupId);
+			}
+		}
+	}
+
+	isAnyGroupAnimationPlaying(): boolean {
+		for (const group of this.groups.values()) {
+			if (group.animationPlaying) return true;
+		}
+		return false;
+	}
+
 	playGroupAnimation(groupId: string): void {
 		const group = this.groups.get(groupId);
 		if (!group || !group.animation || group.animation.mode === 'none') return;
@@ -337,7 +396,7 @@ class StateManager {
 		group._bpmLastTick = now;
 
 		if (audioLevel > 0.05) {
-			const speed = audioLevel * 3;
+			const speed = audioLevel * (group.animation.bpmSpeed ?? 3);
 			group._bpmAccumulator = (group._bpmAccumulator ?? 0) + delta * speed;
 		}
 	}
@@ -485,6 +544,7 @@ class StateManager {
 			playing: false,
 			ignoreGlobalPlayPause: false,
 			bpmSync: false,
+			midiSync: false,
 			effects: { blur: 0, glow: 0, colorCorrection: 0, distortion: 0, glitch: 0 },
 			visible: true,
 		};
@@ -532,7 +592,10 @@ class StateManager {
 
 	moveShapeLayer(id: string, direction: 'up' | 'down'): void {
 		this.pushUndo(true);
+		// Normalize z-indices first to remove gaps
 		const sorted = [...this.shapes].sort((a, b) => a.zIndex - b.zIndex);
+		sorted.forEach((s, i) => s.zIndex = i);
+
 		const idx = sorted.findIndex(s => s.id === id);
 		if (idx === -1) return;
 

@@ -99,6 +99,23 @@ export class CanvasManager {
 		this.setupDrop();
 
 		this.removeMidiBeatListener = midiSync.onBeat(() => {
+			// Group animations — advance if useBpm or useMidi
+			for (const [groupId, group] of state.getGroups()) {
+				if (group.animationPlaying && (group.animation?.useBpm || group.animation?.useMidi)) {
+					state.advanceGroupAnimation(groupId);
+				}
+			}
+			// Per-shape MIDI sync — pulse playback rate on beat
+			for (const shape of state.getShapes()) {
+				if (shape.midiSync && shape.resource) {
+					shape.playing = true;
+				}
+			}
+		});
+
+		// Audio beat detection — advance BPM animations on detected beats
+		audioAnalyzer.onBeat(() => {
+			if (midiSync.connected) return; // MIDI takes priority
 			for (const [groupId, group] of state.getGroups()) {
 				if (group.animationPlaying && group.animation?.useBpm) {
 					state.advanceGroupAnimation(groupId);
@@ -119,8 +136,17 @@ export class CanvasManager {
 		const shapes = state.getShapes();
 		for (const [resourceId, entry] of this.textEntries) {
 			if (!entry.options.marquee) continue;
-			const isPlaying = shapes.some(s => s.resource === resourceId && s.playing);
-			if (isPlaying) {
+			const shape = shapes.find(s => s.resource === resourceId);
+			if (!shape) continue;
+
+			// BPM sync: only animate when above threshold, scale speed by level
+			if (shape.bpmSync && audioAnalyzer.running) {
+				if (audioAnalyzer.isAboveThreshold) {
+					entry.options.marqueeSpeed = shape.fps * audioAnalyzer.level * 2;
+					this.renderTextCanvas(entry);
+					entry.source.update();
+				}
+			} else if (shape.playing) {
 				this.renderTextCanvas(entry);
 				entry.source.update();
 			}
@@ -308,11 +334,16 @@ export class CanvasManager {
 	private drawGrid(): void {
 		this.gridContainer.removeChildren();
 
-		// Always draw output area border
+		// Output area — fill inside lighter, border visible
 		const res = state.resolution;
+		const fill = new Graphics();
+		fill.rect(0, 0, res.x, res.y);
+		fill.fill({ color: 0x1a1a1a });
+		this.gridContainer.addChild(fill);
+
 		const border = new Graphics();
 		border.rect(0, 0, res.x, res.y);
-		border.stroke({ color: 0x3b82f6, width: 1, alpha: 0.4 });
+		border.stroke({ color: 0x3b82f6, width: 1.5, alpha: 0.5 });
 		this.gridContainer.addChild(border);
 
 		if (!this.showGrid) return;
@@ -384,14 +415,33 @@ export class CanvasManager {
 			const entry = this.videoEntries.get(resource.id);
 			if (!entry) continue;
 
-			if (shape.playing && entry.element.paused) {
-				entry.element.play().catch(() => {});
-			} else if (!shape.playing && !entry.element.paused) {
-				entry.element.pause();
+			if (shape.midiSync && midiSync.connected) {
+				// MIDI sync: play at BPM-derived rate
+				if (entry.element.paused) entry.element.play().catch(() => {});
+				const midiBpm = midiSync.bpm;
+				if (midiBpm > 0) {
+					entry.element.playbackRate = (shape.fps / 30) * (midiBpm / 120);
+				} else {
+					entry.element.playbackRate = shape.fps / 30;
+				}
+			} else if (shape.bpmSync && audioAnalyzer.running) {
+				// Mic BPM sync: audio level controls playback
+				if (audioAnalyzer.isAboveThreshold) {
+					if (entry.element.paused) entry.element.play().catch(() => {});
+					entry.element.playbackRate = (shape.fps / 30) * Math.max(0.2, audioAnalyzer.level * 2);
+				} else {
+					if (!entry.element.paused) entry.element.pause();
+				}
+			} else {
+				if (shape.playing && entry.element.paused) {
+					entry.element.play().catch(() => {});
+				} else if (!shape.playing && !entry.element.paused) {
+					entry.element.pause();
+				}
+				entry.element.playbackRate = shape.fps / 30;
 			}
 
 			entry.element.loop = shape.loop;
-			entry.element.playbackRate = shape.fps / 30;
 		}
 	}
 

@@ -4,21 +4,10 @@ import { ShortcutsModal } from './shortcuts-modal';
 import { canvasManager } from './canvas-panel';
 
 export class ControlsPanel extends HTMLElement {
-	private deviceRefreshTimer: ReturnType<typeof setInterval> | null = null;
-
 	connectedCallback(): void {
 		this.className = 'block h-12 bg-neutral-900 border-b border-neutral-700 px-4 shrink-0';
 		this.render();
 		this.setupListeners();
-		this.initDeviceSources();
-	}
-
-	disconnectedCallback(): void {
-		if (this.deviceRefreshTimer) {
-			clearInterval(this.deviceRefreshTimer);
-			this.deviceRefreshTimer = null;
-		}
-		window.removeEventListener('focus', this.boundRefreshDevices);
 	}
 
 	private setupListeners(): void {
@@ -46,12 +35,13 @@ export class ControlsPanel extends HTMLElement {
 		const playAllBtn = this.querySelector('#play-all-btn') as HTMLButtonElement;
 		playAllBtn.addEventListener('click', () => {
 			const shapes = state.getShapes();
-			const anyPlaying = shapes.some(s => !s.ignoreGlobalPlayPause && s.playing);
+			const anyPlaying = shapes.some(s => !s.ignoreGlobalPlayPause && s.playing) || state.isAnyGroupAnimationPlaying();
 			shapes.forEach(s => {
 				if (!s.ignoreGlobalPlayPause) {
 					state.updateShape(s.id, { playing: !anyPlaying });
 				}
 			});
+			state.toggleAllGroupAnimations(!anyPlaying);
 			playAllBtn.textContent = anyPlaying ? '▶ Play All' : '⏸ Pause All';
 		});
 
@@ -69,42 +59,55 @@ export class ControlsPanel extends HTMLElement {
 			}
 		});
 
-		const extBtn = this.querySelector('#btn-external') as HTMLButtonElement;
-		extBtn.addEventListener('click', async () => {
-			await state.toggleExternalWindow();
-			extBtn.textContent = state.externalOpen ? 'Close External' : 'External Window';
+		// Displays modal
+		this.querySelector('#btn-displays')?.addEventListener('click', () => {
+			const modal = document.querySelector('projector-modal') as HTMLElement & { show(): void } | null;
+			if (modal) modal.show();
 		});
 
-		window.promap.onExternalWindowClosed(() => {
-			state.externalOpen = false;
-			extBtn.textContent = 'External Window';
+		window.promap.onExternalWindowClosed((projectorId: number) => {
+			state.openProjectors.delete(projectorId);
+			state.externalOpen = state.openProjectors.size > 0;
+			// Update button
+			const btn = this.querySelector('#btn-displays') as HTMLElement;
+			if (btn) {
+				const count = state.openProjectors.size;
+				btn.textContent = `Displays${count > 0 ? ` (${count})` : ''}`;
+				btn.classList.toggle('bg-green-700', count > 0);
+				btn.classList.toggle('border-green-600', count > 0);
+				btn.classList.toggle('text-green-100', count > 0);
+				btn.classList.toggle('bg-neutral-800', count === 0);
+				btn.classList.toggle('border-neutral-600', count === 0);
+				btn.classList.toggle('text-neutral-300', count === 0);
+			}
 		});
 
-		this.querySelector('#chk-outline')?.addEventListener('change', (e) => {
-			state.setExternalToggle('externalShowOutline', (e.target as HTMLInputElement).checked);
-		});
-		this.querySelector('#chk-points')?.addEventListener('change', (e) => {
-			state.setExternalToggle('externalShowPoints', (e.target as HTMLInputElement).checked);
-		});
-		this.querySelector('#chk-grid')?.addEventListener('change', (e) => {
-			state.setExternalToggle('externalShowGrid', (e.target as HTMLInputElement).checked);
-		});
-
+		// Resolution preset
+		const resPreset = this.querySelector('#res-preset') as HTMLSelectElement;
+		const resCustom = this.querySelector('#res-custom') as HTMLElement;
 		const resWidth = this.querySelector('#res-width') as HTMLInputElement;
 		const resHeight = this.querySelector('#res-height') as HTMLInputElement;
 
-		resWidth.addEventListener('change', () => {
-			const val = parseInt(resWidth.value);
-			if (val > 0) {
-				state.setResolution({ ...state.resolution, x: val });
+		resPreset?.addEventListener('change', () => {
+			const val = resPreset.value;
+			if (val === 'custom') {
+				resCustom?.classList.remove('hidden');
+			} else {
+				resCustom?.classList.add('hidden');
+				const [w, h] = val.split('x').map(Number);
+				state.setResolution({ x: w, y: h });
+				if (resWidth) resWidth.value = String(w);
+				if (resHeight) resHeight.value = String(h);
 			}
 		});
 
-		resHeight.addEventListener('change', () => {
+		resWidth?.addEventListener('change', () => {
+			const val = parseInt(resWidth.value);
+			if (val > 0) state.setResolution({ ...state.resolution, x: val });
+		});
+		resHeight?.addEventListener('change', () => {
 			const val = parseInt(resHeight.value);
-			if (val > 0) {
-				state.setResolution({ ...state.resolution, y: val });
-			}
+			if (val > 0) state.setResolution({ ...state.resolution, y: val });
 		});
 
 		this.querySelector('#chk-canvas-grid')?.addEventListener('change', (e) => {
@@ -119,65 +122,28 @@ export class ControlsPanel extends HTMLElement {
 		});
 	}
 
-	private boundRefreshDevices = (): void => { this.enumerateDevices(); };
 
-	private async initDeviceSources(): Promise<void> {
-		// Request permission so device labels are available
-		try {
-			const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-			stream.getTracks().forEach(t => t.stop());
-		} catch {
-			// Permission denied or no devices — enumerate anyway for deviceIds
-		}
+	private static readonly RESOLUTIONS = [
+		{ value: '7680x4320', label: '8K — 7680×4320' },
+		{ value: '3840x2160', label: '4K — 3840×2160' },
+		{ value: '2560x1440', label: '2K — 2560×1440' },
+		{ value: '1920x1080', label: 'Full HD — 1920×1080' },
+		{ value: '1280x720', label: 'HD — 1280×720' },
+		{ value: '1024x768', label: 'XGA — 1024×768' },
+		{ value: '800x600', label: 'SVGA — 800×600' },
+		{ value: '640x480', label: 'SD — 640×480' },
+	];
 
-		await this.enumerateDevices();
-
-		const audioSelect = this.querySelector('#audio-source') as HTMLSelectElement;
-		const hdmiSelect = this.querySelector('#hdmi-source') as HTMLSelectElement;
-
-		audioSelect.addEventListener('change', () => {
-			state.audioSourceId = audioSelect.value || null;
-		});
-		hdmiSelect.addEventListener('change', () => {
-			state.hdmiSourceId = hdmiSelect.value || null;
-		});
-
-		// Refresh on window focus and every 10 seconds
-		window.addEventListener('focus', this.boundRefreshDevices);
-		this.deviceRefreshTimer = setInterval(() => this.enumerateDevices(), 10000);
+	private isPresetResolution(): boolean {
+		return ControlsPanel.RESOLUTIONS.some(r => r.value === `${state.resolution.x}x${state.resolution.y}`);
 	}
 
-	private async enumerateDevices(): Promise<void> {
-		const devices = await navigator.mediaDevices.enumerateDevices();
-		const audioSelect = this.querySelector('#audio-source') as HTMLSelectElement | null;
-		const hdmiSelect = this.querySelector('#hdmi-source') as HTMLSelectElement | null;
-		if (!audioSelect || !hdmiSelect) return;
-
-		const audioDevices = devices.filter(d => d.kind === 'audioinput');
-		const videoDevices = devices.filter(d => d.kind === 'videoinput');
-
-		const prevAudio = audioSelect.value;
-		const prevHdmi = hdmiSelect.value;
-
-		audioSelect.innerHTML = '<option value="">No Audio Source</option>' +
-			audioDevices.map(d => `<option value="${d.deviceId}">${d.label || d.deviceId}</option>`).join('');
-		hdmiSelect.innerHTML = '<option value="">No HDMI Source</option>' +
-			videoDevices.map(d => `<option value="${d.deviceId}">${d.label || d.deviceId}</option>`).join('');
-
-		// Restore previous selection if still available
-		if (prevAudio && audioDevices.some(d => d.deviceId === prevAudio)) {
-			audioSelect.value = prevAudio;
-		} else {
-			audioSelect.value = '';
-			state.audioSourceId = null;
-		}
-
-		if (prevHdmi && videoDevices.some(d => d.deviceId === prevHdmi)) {
-			hdmiSelect.value = prevHdmi;
-		} else {
-			hdmiSelect.value = '';
-			state.hdmiSourceId = null;
-		}
+	private renderResolutionOptions(): string {
+		const current = `${state.resolution.x}x${state.resolution.y}`;
+		return ControlsPanel.RESOLUTIONS.map(r =>
+			`<option value="${r.value}" ${r.value === current ? 'selected' : ''}>${r.label}</option>`
+		).join('') +
+		`<option value="custom" ${!this.isPresetResolution() ? 'selected' : ''}>Custom</option>`;
 	}
 
 	private render(): void {
@@ -205,15 +171,6 @@ export class ControlsPanel extends HTMLElement {
 
 				<div class="h-5 w-px bg-neutral-700"></div>
 
-				<select id="audio-source" class="px-2 py-1 text-xs bg-neutral-800 border border-neutral-600 rounded text-neutral-300">
-					<option value="">No Audio Source</option>
-				</select>
-				<select id="hdmi-source" class="px-2 py-1 text-xs bg-neutral-800 border border-neutral-600 rounded text-neutral-300">
-					<option value="">No HDMI Source</option>
-				</select>
-
-				<div class="h-5 w-px bg-neutral-700"></div>
-
 				<button id="play-all-btn" class="px-2.5 py-1 text-xs bg-neutral-800 hover:bg-neutral-700 rounded border border-neutral-600 text-neutral-300">▶ Play All</button>
 				<label class="text-xs text-neutral-400 flex items-center gap-1">
 					FPS
@@ -223,12 +180,14 @@ export class ControlsPanel extends HTMLElement {
 
 				<div class="h-5 w-px bg-neutral-700"></div>
 
-				<label class="text-xs text-neutral-400 flex items-center gap-1">
-					Resolution
+				<select id="res-preset" class="px-2 py-1 text-xs bg-neutral-800 border border-neutral-600 rounded text-neutral-300">
+					${this.renderResolutionOptions()}
+				</select>
+				<div id="res-custom" class="${this.isPresetResolution() ? 'hidden' : ''} flex items-center gap-1">
 					<input id="res-width" type="number" value="${state.resolution.x}" min="1" class="w-14 px-1 py-0.5 text-xs bg-neutral-800 border border-neutral-600 rounded text-neutral-300 text-center">
-					x
+					<span class="text-xs text-neutral-500">×</span>
 					<input id="res-height" type="number" value="${state.resolution.y}" min="1" class="w-14 px-1 py-0.5 text-xs bg-neutral-800 border border-neutral-600 rounded text-neutral-300 text-center">
-				</label>
+				</div>
 
 				<div class="h-5 w-px bg-neutral-700"></div>
 				<label class="text-xs text-neutral-400 flex items-center gap-1"><input id="chk-canvas-grid" type="checkbox" class="accent-blue-500"> Grid</label>
@@ -236,10 +195,7 @@ export class ControlsPanel extends HTMLElement {
 
 				<div class="flex-1"></div>
 
-				<button id="btn-external" class="px-2.5 py-1 text-xs bg-neutral-800 hover:bg-neutral-700 rounded border border-neutral-600 text-neutral-300">External Window</button>
-				<label class="text-xs text-neutral-400 flex items-center gap-1"><input id="chk-outline" type="checkbox" class="accent-blue-500"> Outline</label>
-				<label class="text-xs text-neutral-400 flex items-center gap-1"><input id="chk-points" type="checkbox" class="accent-blue-500"> Points</label>
-				<label class="text-xs text-neutral-400 flex items-center gap-1"><input id="chk-grid" type="checkbox" class="accent-blue-500"> Grid</label>
+				<button id="btn-displays" class="px-2.5 py-1 text-xs ${state.openProjectors.size > 0 ? 'bg-green-700 border-green-600 text-green-100' : 'bg-neutral-800 border-neutral-600 text-neutral-300'} hover:bg-neutral-700 rounded border">Displays${state.openProjectors.size > 0 ? ` (${state.openProjectors.size})` : ''}</button>
 				<button id="btn-shortcuts" class="px-2.5 py-1 text-xs bg-neutral-800 hover:bg-neutral-700 rounded border border-neutral-600 text-neutral-300" title="Shortcuts (?)">⌨</button>
 			</div>
 		`;

@@ -4,7 +4,7 @@ export class RightPanel extends HTMLElement {
 	private activeTab: 'shape' | 'groups' = 'shape';
 
 	connectedCallback(): void {
-		this.className = 'block w-64 bg-neutral-900 border-l border-neutral-700 overflow-hidden shrink-0 flex flex-col';
+		this.className = 'block bg-neutral-900 overflow-hidden shrink-0 flex flex-col';
 		this.render();
 		state.subscribe(() => this.onStateChange());
 	}

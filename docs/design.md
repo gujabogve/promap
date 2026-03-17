@@ -9,14 +9,16 @@ Dark themed UI throughout. Dark neutral backgrounds with subtle borders and mute
 ```
 +--------------------------------------------------+
 | Controls (full width top bar)                     |
-+----------------+---------------------+-----------+
-|                |                     |  Right    |
-| Resources      |   Canvas            |  Panel    |
-| (left)         |   (center)          | (tabbed)  |
-|                |                     |           |
-+----------------+---------------------+-----------+
-| Timeline (bottom, resizable, overlays bottom)     |
++----------+|+------------------------+|+-----------+
+|          |||                        |||  Right    |
+| Resources|||   Canvas               |||  Panel    |
+| (left)   |||   (center)             ||| (tabbed)  |
+|          |||                        |||           |
++----------+|+------------------------+|+-----------+
+| Timeline (bottom, resizable)                      |
 +--------------------------------------------------+
+
+| = draggable resize handles (horizontal + vertical)
 ```
 
 ## Panels
@@ -24,18 +26,17 @@ Dark themed UI throughout. Dark neutral backgrounds with subtle borders and mute
 ### Global Controls (top bar, full width)
 
 - Save / Load config (JSON files, native file dialogs, Ctrl+S / Ctrl+O)
-- Audio / HDMI source selection dropdowns
-- Play / Pause all (Space key, respects ignoreGlobalPlayPause)
+- Audio / HDMI source selection dropdowns (auto-enumerate devices via mediaDevices API, refresh on focus + 10s timer)
+- Play / Pause all (Space key, respects ignoreGlobalPlayPause, also toggles group animations)
 - Global FPS slider
 - Add shape: dropdown (circle, triangle, square, N-shape with point selector) + Add button
 - Canvas grid toggle + snap toggle
-- Show / Hide external projector window
-- Toggle outline / points / grid on external window
-- Output resolution config
+- Resolution preset dropdown (1920×1080, 1280×720, 3840×2160, 1024×768, 800×600, Custom with W×H fields)
+- Displays button — opens projector management modal (green with count when projectors open)
 - Undo / Redo buttons (Ctrl+Z / Ctrl+Shift+Z)
 - Keyboard shortcuts cheat sheet button (?)
 
-### Resources (left panel)
+### Resources (left panel, resizable 150-500px)
 
 - Upload media via native file dialog (files copied to Electron userData/media/)
 - Media served via custom `media://` protocol — persists across save/load
@@ -46,9 +47,23 @@ Dark themed UI throughout. Dark neutral backgrounds with subtle borders and mute
 - Media library list with thumbnails, drag to assign to shapes
 - Remove resources with X button
 - Double-click text/color resources to edit
+- **Audio section** (bottom of panel):
+  - Mic toggle button (green when active)
+  - dB level display
+  - Level bar with threshold marker (red line)
+  - Threshold slider (1-50%, red accent) — controls BPM animation sensitivity
+  - Active dot (green above threshold, red below)
+  - 32 frequency spectrum bars (color-coded green/yellow/red)
+  - **MIDI section**:
+    - Device selector dropdown + Connect/Disconnect button
+    - Beat dots (4, pulse on quarter note)
+    - Beat flash bar
+    - 16 note activity bars with velocity decay
+    - BPM display, last message display
+    - Test button — opens MIDI test player modal
 - Future: OBS feed integration as a source
 
-### Canvas (center)
+### Canvas (center, fills remaining space)
 
 - Main editing area for shape drawing and positioning
 - Output area border (blue rectangle matching resolution setting)
@@ -68,25 +83,28 @@ Dark themed UI throughout. Dark neutral backgrounds with subtle borders and mute
 - Pan: middle-mouse drag, Alt+left-drag, or ✋ pan mode button
 - Reset view: R button (1:1 zoom, origin)
 - Floating toolbar: +, −, R, ✋ buttons in top-right corner
+- Ghost rendering for hidden shapes (faint outline, clickable to select)
 
-### Right Panel (tabbed: Shape / Groups)
+### Right Panel (tabbed: Shape / Groups, resizable 150-500px)
 
 #### Shape Tab
 
-- When nothing selected: list of all shapes with type icons (●▲■⬡), click to select
+- When nothing selected: list of all shapes with type icons (●▲■⬡) and visibility toggles (◆/◇), click to select
 - When shape selected: full shape options (below)
 
 #### Shape Options (visible when shape selected)
 
+- Group membership banner (blue) — shows which group(s) the shape belongs to, clickable links to navigate to group. Info text about group overrides.
 - Shape name (editable)
+- Visibility toggle (◆ Visible / ◇ Hidden)
 - Actions: Duplicate, Delete
 - Position: X/Y inputs
 - Size: W/H inputs with W→H / H→W buttons
 - Rotation slider (0–360°)
-- Z-order: Layer Up / Down buttons
+- Z-order: Layer Up / Down buttons (normalized z-indices, single press = single layer change)
 - Individual point positions (for non-circle shapes)
 - Resource assignment: dropdown + drag & drop, blue badge shows assigned resource with clear button
-- Projector assignment (multi-projector)
+- Projector assignment (1-4, for multi-projector support)
 - Projection type:
   - **Default (stretch)** — resource stretched to fill shape bounding box
   - **Fit (aspect ratio)** — resource scaled to fit inside shape, maintains aspect ratio, centered
@@ -111,31 +129,37 @@ Dark themed UI throughout. Dark neutral backgrounds with subtle borders and mute
 - When nothing selected: list of all groups with shape count, click to select. Hint to Shift+click shapes to create.
 - When group selected: group options with ← back button
 - Group name (editable)
-- Shape list: reorder (↑↓), remove from group (✕), add from dropdown
-- Click shape name to select it on canvas
+- Shape list: visibility toggles (◆/◇ per shape + show/hide all buttons), reorder (↑↓), remove from group (✕), add from dropdown
+- Click shape name highlights on canvas (stays on groups tab)
 - Group-level controls (apply to all shapes): play/pause all, FPS, loop, resource, projection type
 - Group projection:
-  - **Masked (group)** — all shapes share one resource, resource moves behind all shapes. Warning if shapes have different resources. First shape's resource applied to all on confirm. Visual positioning modal shows all shapes at actual canvas positions.
+  - **Masked (group)** — all shapes share one resource, resource moves behind all shapes. Warning if shapes have different resources (skipped if same). First shape's resource applied to all on confirm. Visual positioning modal shows all shapes at actual canvas positions.
   - **Mapped (group)** — all shapes share one resource, each shape independently draggable in modal to pick its own area. Per-shape offsets saved individually. Resource stays fixed, shapes move (inverted drag). On canvas: shapes stay at positions, resource shifts per-shape.
 - Group-level effects: blur, glow, color correction, distortion, glitch (applies to all shapes)
 - Sequence animation:
-  - Modes: In Order (series), Random, From Middle
-  - Configurable fade duration (ms) and hold duration (ms)
+  - Modes: In Order (series), Random, From Middle (pairs)
+  - Configurable fade duration (ms) and hold duration (ms) — hidden when BPM mode active
+  - Easing: linear, ease-in, ease-out, ease-in-out
   - Loop toggle
   - Auto-play resource toggle (starts/stops shape resource with animation)
+  - BPM mode: "Use BPM (mic)" checkbox + speed slider (1x-20x)
   - Play/Stop button — shapes fade in/hold/fade out one at a time
-  - From Middle: starts at center shape, expands outward to both ends
+  - From Middle: starts at center shape(s), expands outward to both ends as pairs
+  - Hidden shapes skipped during animation
+  - Global Play/Pause also controls group animations
 - Delete group button (doesn't delete shapes, just the group)
 - Groups persist in save/load
 
 ### Timeline (bottom panel, Blender-style)
 
-- Resizable: drag handle at top edge (200px min, 70vh max), toggle button to snap between sizes
+- Resizable: drag handle at top edge (200px min, 70vh max)
+- "▲ Timeline" title clickable to toggle between min and max height
 - Per-shape timeline tracks with labels (click label to select shape)
 - Show/hide shapes: ◆/◇ toggle per track
 - "Insert Keyframe" button: saves full shape state (position, rotation, size, points, effects)
 - Keyframes displayed as yellow diamonds, draggable to move, right-click to delete
-- Click keyframe: popover with morph toggle, easing type (linear/ease-in/ease-out/ease-in-out), hold time (seconds), delete
+- Click keyframe: popover with morph toggle, easing type, hold time (seconds), transition effect, delete
+- Transition effects per keyframe: none, fade (blur), flash (glow), dissolve (glitch)
 - Draggable playhead, click ruler to seek
 - Play/pause/stop with looping, time display
 - Morph interpolation between keyframes with configurable easing
@@ -143,20 +167,39 @@ Dark themed UI throughout. Dark neutral backgrounds with subtle borders and mute
 - Visual morph regions (blue highlights) on tracks
 - Keyframes + timeline duration saved in project config
 
-### External Window (projector output)
+### External Window / Projector Output
 
-- Separate Electron window (frameless, black background)
-- Renders canvas content (shapes + resources with masking)
+- **Displays modal** (browser-style tabs):
+  - One tab per open projector, × to close, + to add new
+  - Per-projector display options: outline, points, grid, face (white fill 20% opacity)
+  - Assigned shapes list with type icons and visibility
+  - Quick assign: dropdown to reassign shapes, "Assign all" bulk button
+  - Close projector button
+- Separate Electron windows (frameless, black background)
+- Renders shapes + resources with masking
 - All resource types supported (video, image, text, color)
 - All projection types supported (default, fit, masked, mapped)
 - Shape rotation, visibility
-- Toggle outline / points / grid from main controls
+- Outline (2px, 70% opacity), points (6px radius, including center for circles), face fill
 - **Independent rendering**: receives state once via IPC, runs own PixiJS ticker at 60fps
 - Group animations calculated locally (no per-frame IPC sync)
-- Scene only rebuilt on actual state changes
-- Designed for multiple external windows (each runs independently)
-- Button toggles open/close, label updates
+- Scene only rebuilt on actual state changes, persistent containers for animation opacity
+- Shapes filtered by projector assignment
+- Multiple windows supported (each runs independently with own projector ID)
 - Auto-closes when main window closes
+
+### MIDI Test Player (modal)
+
+- BPM slider (60-200)
+- Play/Stop clock (24 PPQ MIDI clock simulation)
+- Beat dots (4/4 visual indicator)
+- Beat counter
+- Preset patterns: Techno (130), House (124), DnB (174), Ambient (80) — with Stop button
+- Manual triggers: Beat, Note C4, CC #1
+- Mini keyboard (C to C, 8 keys, mousedown/mouseup note on/off)
+- Timestamped message log
+- Clock keeps running in background when modal closed
+- MIDI button turns green when clock active
 
 ## Config / Persistence
 
@@ -166,7 +209,7 @@ Dark themed UI throughout. Dark neutral backgrounds with subtle borders and mute
 - Load: restores full project state from JSON via native file dialog
 - Media files: copied to Electron userData/media/ on upload, served via `media://` custom protocol, survives save/load
 - Undo/redo history saved in config
-- Keyframes, timeline duration, groups saved in config
+- Keyframes, timeline duration, groups (with animation config) saved in config
 
 ## Interaction Summary
 
@@ -187,6 +230,8 @@ Dark themed UI throughout. Dark neutral backgrounds with subtle borders and mute
 | Zoom canvas | Scroll wheel / +/− buttons |
 | Pan canvas | Middle-mouse / Alt+drag / ✋ mode |
 | Reset canvas view | R button |
+| Resize panels | Drag border between panels |
+| Toggle timeline size | Click "▲ Timeline" text |
 | Shortcuts cheat sheet | ? |
 | Close modal | Escape |
 
@@ -197,23 +242,26 @@ Dark themed UI throughout. Dark neutral backgrounds with subtle borders and mute
 When "Use BPM" is enabled on a group sequence animation:
 
 - **Mic input** via Web Audio API runs continuously in background
-- **Sound level detection**: analyzes audio amplitude in real-time
+- **Sound level detection**: analyzes audio amplitude in real-time (RMS)
 - **Below threshold** (quiet/muted): sequence stops, all group shapes hidden (opacity 0), holds current position
 - **Above threshold** (sound detected): sequence resumes — shows next shape in sequence
 - **Sound level controls speed**: louder = faster fade transitions, quieter = slower fades
+- **Speed slider** (1x-20x): multiplier for sound level to animation speed mapping
+- **Threshold slider**: configurable in audio section (1-50%)
 - Sequence order (series/random/from-middle) still applies
 - Easing still applies to fade curves
 - Loop/auto-play resource options still work
 - **Implementation**: AudioAnalyzer class with RMS level detection, accumulator-based timing
-- Sound level to speed mapping: `audioLevel * 3` multiplier (needs tuning)
 
 ### MIDI Sync
 
 - MidiSync class: `navigator.requestMIDIAccess()`, device enumeration
+- **Device selector** in audio section: dropdown + connect/disconnect button
 - Handles Note On/Off, Control Change, MIDI Clock, Start/Stop messages
 - BPM detection from MIDI Clock (24 PPQ — 24 pulses per quarter note)
-- Beat callbacks for advancing animations on beat
-- Device selection support
+- Beat callbacks for advancing BPM-enabled group animations
+- MIDI beat advances animation by one cycle (takes priority over mic when connected)
+- Visual feedback: beat dots, note bars, BPM display, last message
 
 ### Transition Effects (timeline keyframes)
 
@@ -225,8 +273,8 @@ When "Use BPM" is enabled on a group sequence animation:
 
 ### Progressive sync implementation
 
-1. **Mic-based sound level** — Web Audio API, amplitude analysis (first implementation for BPM mode)
-2. **Beat detection** — analyze audio for beat patterns, advance on each beat
-3. **MIDI sync** — Web MIDI API, works with Rekordbox, Serato, Traktor, any controller
+1. **Mic-based sound level** — Web Audio API, amplitude analysis (implemented)
+2. **MIDI sync** — Web MIDI API, device selection, clock/beat detection (implemented)
+3. **Beat detection** — analyze audio for beat patterns, advance on each beat (planned)
 4. **Pro DJ Link** — direct Rekordbox/CDJ integration via `prolink-connect` (Node.js, needs Electron)
 5. **Timecoded vinyl** — decode timecode audio signal (future, complex)

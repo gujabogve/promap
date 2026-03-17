@@ -3,8 +3,8 @@ type BeatListener = () => void;
 
 export class MidiSync {
 	private access: MIDIAccess | null = null;
-	private listeners: Set<MidiListener> = new Set();
-	private beatListeners: Set<BeatListener> = new Set();
+	listeners: Set<MidiListener> = new Set();
+	beatListeners: Set<BeatListener> = new Set();
 	private _connected = false;
 	private _devices: MIDIInput[] = [];
 	private _selectedDeviceId: string | null = null;

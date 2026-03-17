@@ -16,7 +16,7 @@ export class CanvasPanel extends HTMLElement {
 		this.app = new Application();
 		await this.app.init({
 			resizeTo: container,
-			background: 0x0d0d0d,
+			background: 0x080808,
 			antialias: true,
 		});
 		container.appendChild(this.app.canvas);

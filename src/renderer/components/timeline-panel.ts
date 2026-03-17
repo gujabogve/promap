@@ -45,7 +45,7 @@ export class TimelinePanel extends HTMLElement {
 		this.innerHTML = `
 			<div class="flex flex-col h-full">
 				<div class="flex items-center gap-2 px-3 py-1.5 border-b border-neutral-700 shrink-0">
-					<h2 class="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Timeline</h2>
+					<h2 id="tl-title" class="text-xs font-semibold text-neutral-400 uppercase tracking-wide cursor-pointer hover:text-neutral-200">▲ Timeline</h2>
 					<div class="flex-1"></div>
 					<button id="tl-play" class="px-2 py-0.5 text-xs bg-neutral-800 hover:bg-neutral-700 rounded border border-neutral-600 text-neutral-300">${state.timelinePlaying ? '⏸' : '▶'}</button>
 					<button id="tl-stop" class="px-2 py-0.5 text-xs bg-neutral-800 hover:bg-neutral-700 rounded border border-neutral-600 text-neutral-300">⏹</button>
@@ -152,6 +152,11 @@ export class TimelinePanel extends HTMLElement {
 		this.querySelector('#tl-keyframe')?.addEventListener('click', () => {
 			const selected = state.getSelectedShape();
 			if (selected) state.insertKeyframe(selected.id);
+		});
+
+		this.querySelector('#tl-title')?.addEventListener('click', () => {
+			const shell = document.querySelector('app-shell') as HTMLElement & { toggleTimeline(): void } | null;
+			if (shell) shell.toggleTimeline();
 		});
 
 		const ruler = this.querySelector('#tl-ruler') as HTMLElement;

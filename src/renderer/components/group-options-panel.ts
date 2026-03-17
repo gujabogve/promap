@@ -204,6 +204,16 @@ export class GroupOptionsPanel extends HTMLElement {
 					<label class="text-xs text-neutral-400 flex items-center gap-1.5">
 						<input id="grp-anim-bpm" type="checkbox" ${anim.useBpm ? 'checked' : ''} class="accent-blue-500"> Use BPM (mic)
 					</label>
+					<label class="text-xs text-neutral-400 flex items-center gap-1.5">
+						<input id="grp-anim-midi" type="checkbox" ${anim.useMidi ? 'checked' : ''} class="accent-blue-500"> Use MIDI
+					</label>
+					<div id="grp-anim-bpm-speed" class="${anim.useBpm ? '' : 'hidden'}">
+						<div class="flex items-center gap-1.5">
+							<span class="text-xs text-neutral-500">Speed</span>
+							<input id="grp-anim-speed" type="range" min="1" max="20" step="0.5" value="${anim.bpmSpeed ?? 3}" class="flex-1 accent-blue-500">
+							<span id="grp-anim-speed-value" class="text-xs text-neutral-300 font-mono w-8 text-right">${anim.bpmSpeed ?? 3}x</span>
+						</div>
+					</div>
 					<div id="grp-anim-timing" class="${anim.useBpm ? 'hidden' : ''} flex gap-2">
 						<div class="flex-1">
 							<label class="text-xs text-neutral-500 block mb-0.5">Fade (ms)</label>
@@ -342,6 +352,8 @@ export class GroupOptionsPanel extends HTMLElement {
 			autoPlayResource: (this.querySelector('#grp-anim-autoplay') as HTMLInputElement)?.checked ?? false,
 			easing: ((this.querySelector('#grp-anim-easing') as HTMLSelectElement)?.value ?? 'linear') as GroupAnimationOptions['easing'],
 			useBpm: (this.querySelector('#grp-anim-bpm') as HTMLInputElement)?.checked ?? false,
+			useMidi: (this.querySelector('#grp-anim-midi') as HTMLInputElement)?.checked ?? false,
+			bpmSpeed: parseFloat((this.querySelector('#grp-anim-speed') as HTMLInputElement)?.value) || 3,
 		});
 
 		this.querySelector('#grp-anim-mode')?.addEventListener('change', (e) => {
@@ -369,6 +381,19 @@ export class GroupOptionsPanel extends HTMLElement {
 			const checked = (e.target as HTMLInputElement).checked;
 			const timing = this.querySelector('#grp-anim-timing') as HTMLElement;
 			timing?.classList.toggle('hidden', checked);
+			const speedSection = this.querySelector('#grp-anim-bpm-speed') as HTMLElement;
+			speedSection?.classList.toggle('hidden', !checked);
+			state.setGroupAnimation(groupId, getAnimOptions());
+		});
+
+		this.querySelector('#grp-anim-midi')?.addEventListener('change', () => {
+			state.setGroupAnimation(groupId, getAnimOptions());
+		});
+
+		this.querySelector('#grp-anim-speed')?.addEventListener('input', () => {
+			const slider = this.querySelector('#grp-anim-speed') as HTMLInputElement;
+			const label = this.querySelector('#grp-anim-speed-value');
+			if (label) label.textContent = `${slider.value}x`;
 			state.setGroupAnimation(groupId, getAnimOptions());
 		});
 

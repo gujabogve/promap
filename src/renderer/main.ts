@@ -11,6 +11,8 @@ import './components/text-modal';
 import './components/color-modal';
 import './components/right-panel';
 import './components/group-options-panel';
+import './components/midi-test-panel';
+import './components/projector-modal';
 import './components/mask-position-modal';
 import { state } from './state/state-manager';
 import { ShortcutsModal } from './components/shortcuts-modal';
@@ -53,12 +55,13 @@ document.addEventListener('keydown', (e) => {
 		if (!isInputFocused()) {
 			e.preventDefault();
 			const shapes = state.getShapes();
-			const anyPlaying = shapes.some(s => !s.ignoreGlobalPlayPause && s.playing);
+			const anyPlaying = shapes.some(s => !s.ignoreGlobalPlayPause && s.playing) || state.isAnyGroupAnimationPlaying();
 			shapes.forEach(s => {
 				if (!s.ignoreGlobalPlayPause) {
 					state.updateShape(s.id, { playing: !anyPlaying });
 				}
 			});
+			state.toggleAllGroupAnimations(!anyPlaying);
 		}
 	} else if (e.key === 'Delete' || e.key === 'Backspace') {
 		if (!isInputFocused()) {

@@ -6,7 +6,31 @@
 	"scripts": {
 		"dev": "electron-vite dev",
 		"build": "electron-vite build",
-		"preview": "electron-vite preview"
+		"preview": "electron-vite preview",
+		"build:win": "electron-vite build && electron-builder --win --dir",
+		"dist:win": "electron-vite build && electron-builder --win"
+	},
+	"build": {
+		"appId": "com.promap.app",
+		"productName": "ProMap",
+		"directories": {
+			"output": "release"
+		},
+		"files": [
+			"out/**/*"
+		],
+		"win": {
+			"target": [
+				{
+					"target": "portable",
+					"arch": ["x64"]
+				}
+			],
+			"icon": null
+		},
+		"portable": {
+			"artifactName": "ProMap-${version}-portable.exe"
+		}
 	},
 	"dependencies": {
 		"pixi.js": "^8.17.1"
@@ -14,6 +38,7 @@
 	"devDependencies": {
 		"@tailwindcss/vite": "^4.2.1",
 		"electron": "^41.0.2",
+		"electron-builder": "^26.8.1",
 		"electron-vite": "^5.0.0",
 		"tailwindcss": "^4.2.1",
 		"typescript": "^5.9.3",

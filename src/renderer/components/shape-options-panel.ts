@@ -84,9 +84,25 @@ export class ShapeOptionsPanel extends HTMLElement {
 			</div>
 		`).join('');
 
+		// Find groups this shape belongs to
+		const shapeGroups: { id: string; name: string }[] = [];
+		for (const [gId, g] of state.getGroups()) {
+			if (g.shapeIds.includes(shape.id)) {
+				shapeGroups.push({ id: gId, name: g.name });
+			}
+		}
+
 		this.innerHTML = `
 			<div class="p-3 space-y-3">
 				<h2 class="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Shape Options</h2>
+
+				<!-- Group membership -->
+				${shapeGroups.length > 0 ? `
+				<div class="px-2 py-1.5 bg-blue-900/30 border border-blue-800/50 rounded">
+					<span class="text-xs text-blue-400">Group: ${shapeGroups.map(g => `<button class="hover:text-blue-300 underline" data-goto-group="${g.id}">${g.name}</button>`).join(', ')}</span>
+					<div class="text-xs text-blue-500/70 mt-0.5">Some options may be managed by group. Changes here override group settings.</div>
+				</div>
+				` : ''}
 
 				<!-- Name -->
 				<div>
@@ -204,6 +220,7 @@ export class ShapeOptionsPanel extends HTMLElement {
 				<div>
 					<label class="text-xs text-neutral-400 block mb-1">BPM Sync</label>
 					<label class="text-xs text-neutral-400 flex items-center gap-1.5"><input id="shape-bpm" type="checkbox" ${shape.bpmSync ? 'checked' : ''} class="accent-blue-500"> Use mic for BPM</label>
+					<label class="text-xs text-neutral-400 flex items-center gap-1.5"><input id="shape-midi" type="checkbox" ${shape.midiSync ? 'checked' : ''} class="accent-blue-500"> Use MIDI for BPM</label>
 				</div>
 
 				<div class="h-px bg-neutral-700"></div>
@@ -256,6 +273,13 @@ export class ShapeOptionsPanel extends HTMLElement {
 			state.updateShape(shapeId, updates);
 			this.updating = false;
 		};
+
+		// Group navigation
+		this.querySelectorAll<HTMLElement>('[data-goto-group]').forEach(el => {
+			el.addEventListener('click', () => {
+				state.selectGroup(el.dataset.gotoGroup!);
+			});
+		});
 
 		this.listen('shape-name', 'change', (el) => update({ name: (el as HTMLInputElement).value }));
 		this.listen('shape-x', 'change', (el) => {
@@ -323,6 +347,7 @@ export class ShapeOptionsPanel extends HTMLElement {
 		this.listen('shape-loop', 'change', (el) => update({ loop: (el as HTMLInputElement).checked }));
 		this.listen('shape-ignore-global', 'change', (el) => update({ ignoreGlobalPlayPause: (el as HTMLInputElement).checked }));
 		this.listen('shape-bpm', 'change', (el) => update({ bpmSync: (el as HTMLInputElement).checked }));
+		this.listen('shape-midi', 'change', (el) => update({ midiSync: (el as HTMLInputElement).checked }));
 
 		this.querySelector('#btn-play')?.addEventListener('click', () => {
 			const shape = state.getSelectedShape();

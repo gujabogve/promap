@@ -83,6 +83,8 @@ export interface GroupAnimationOptions {
 	autoPlayResource: boolean;
 	easing: EasingType;
 	useBpm: boolean;
+	useMidi: boolean;
+	bpmSpeed: number;
 }
 
 export type ProjectionType = 'default' | 'fit' | 'masked' | 'mapped';
@@ -120,6 +122,7 @@ export interface ShapeData {
 	playing: boolean;
 	ignoreGlobalPlayPause: boolean;
 	bpmSync: boolean;
+	midiSync: boolean;
 	effects: ShapeEffects;
 	visible: boolean;
 }

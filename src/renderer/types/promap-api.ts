@@ -10,12 +10,12 @@ export interface PromapAPI {
 	loadConfig: () => Promise<string | null>;
 	autoSave: (json: string) => Promise<string>;
 	loadAutoSave: () => Promise<string | null>;
-	openExternalWindow: () => Promise<boolean>;
-	closeExternalWindow: () => Promise<boolean>;
-	isExternalWindowOpen: () => Promise<boolean>;
+	openExternalWindow: (projectorId?: number) => Promise<number>;
+	closeExternalWindow: (projectorId?: number) => Promise<boolean>;
+	isExternalWindowOpen: (projectorId?: number) => Promise<boolean>;
 	syncExternal: (data: string) => void;
 	onStateUpdate: (callback: (data: string) => void) => void;
-	onExternalWindowClosed: (callback: () => void) => void;
+	onExternalWindowClosed: (callback: (projectorId: number) => void) => void;
 }
 
 declare global {

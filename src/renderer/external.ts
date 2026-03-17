@@ -16,12 +16,13 @@ interface ExternalState {
 	showOutline: boolean;
 	showPoints: boolean;
 	showGrid: boolean;
+	projectorDisplay?: Record<number, { showOutline: boolean; showPoints: boolean; showGrid: boolean; showFace: boolean }>;
 	groups: Record<string, GroupState>;
 }
 
 const OUTLINE_COLOR = 0xffffff;
 const POINT_COLOR = 0xffffff;
-const POINT_RADIUS = 4;
+const POINT_RADIUS = 6;
 
 class ExternalRenderer {
 	private app: Application;
@@ -74,7 +75,14 @@ class ExternalRenderer {
 
 	private rebuild(): void {
 		if (!this.currentState) return;
-		const { shapes, resources, showOutline, showPoints, showGrid } = this.currentState;
+		const { shapes, resources } = this.currentState;
+
+		// Use per-projector display options if available, fallback to global
+		const perProjector = this.currentState.projectorDisplay?.[this.projectorId];
+		const showOutline = perProjector?.showOutline ?? this.currentState.showOutline;
+		const showPoints = perProjector?.showPoints ?? this.currentState.showPoints;
+		const showGrid = perProjector?.showGrid ?? this.currentState.showGrid;
+		const showFace = perProjector?.showFace ?? false;
 
 		// Grid
 		this.gridContainer.removeChildren();
@@ -102,6 +110,19 @@ class ExternalRenderer {
 			const resource = resources.find(r => r.id === shape.resource);
 			if (resource) this.drawResource(shape, resource, container);
 
+			// Face fill (white transparent)
+			if (showFace) {
+				const fg = new Graphics();
+				if (shape.type === 'circle') {
+					fg.ellipse(shape.position.x + shape.size.x / 2, shape.position.y + shape.size.y / 2, shape.size.x / 2, shape.size.y / 2);
+				} else if (shape.points.length >= 3) {
+					fg.poly(shape.points.flatMap(p => [p.x + shape.position.x, p.y + shape.position.y]), true);
+				}
+				fg.fill({ color: 0xffffff, alpha: 0.2 });
+				container.addChild(fg);
+			}
+
+			// Outline
 			if (showOutline) {
 				const g = new Graphics();
 				if (shape.type === 'circle') {
@@ -109,16 +130,24 @@ class ExternalRenderer {
 				} else if (shape.points.length >= 3) {
 					g.poly(shape.points.flatMap(p => [p.x + shape.position.x, p.y + shape.position.y]), true);
 				}
-				g.stroke({ color: OUTLINE_COLOR, width: 1, alpha: 0.5 });
+				g.stroke({ color: OUTLINE_COLOR, width: 2, alpha: 0.7 });
 				container.addChild(g);
 			}
 
-			if (showPoints && shape.type !== 'circle') {
-				for (const p of shape.points) {
+			// Points (including center point for circles)
+			if (showPoints) {
+				if (shape.type === 'circle') {
 					const pg = new Graphics();
-					pg.circle(p.x + shape.position.x, p.y + shape.position.y, POINT_RADIUS);
-					pg.fill({ color: POINT_COLOR, alpha: 0.5 });
+					pg.circle(shape.position.x + shape.size.x / 2, shape.position.y + shape.size.y / 2, POINT_RADIUS);
+					pg.fill({ color: POINT_COLOR, alpha: 0.7 });
 					container.addChild(pg);
+				} else {
+					for (const p of shape.points) {
+						const pg = new Graphics();
+						pg.circle(p.x + shape.position.x, p.y + shape.position.y, POINT_RADIUS);
+						pg.fill({ color: POINT_COLOR, alpha: 0.7 });
+						container.addChild(pg);
+					}
 				}
 			}
 
