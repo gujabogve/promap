@@ -3,6 +3,7 @@ import { join, extname, basename } from 'path';
 import { readFile, writeFile, copyFile, mkdir, stat } from 'fs/promises';
 import { createReadStream } from 'fs';
 import { randomUUID } from 'crypto';
+import { autoUpdater } from 'electron-updater';
 import { prolinkListener } from './prolink';
 
 // Force dedicated GPU (NVIDIA/AMD) instead of integrated
@@ -310,6 +311,20 @@ function setupIpc(): void {
 		return prolinkListener.running;
 	});
 
+	ipcMain.handle('check-for-updates', () => {
+		autoUpdater.checkForUpdates().catch(() => {});
+		return true;
+	});
+
+	ipcMain.handle('install-update', () => {
+		autoUpdater.quitAndInstall(false, true);
+		return true;
+	});
+
+	ipcMain.handle('get-app-version', () => {
+		return app.getVersion();
+	});
+
 	ipcMain.handle('save-media-blob', async (_event, data: Uint8Array, filename: string) => {
 		const mediaDir = MEDIA_DIR();
 		await mkdir(mediaDir, { recursive: true });
@@ -358,6 +373,35 @@ function setupIpc(): void {
 	});
 }
 
+function setupAutoUpdater(): void {
+	autoUpdater.autoDownload = true;
+	autoUpdater.autoInstallOnAppQuit = true;
+
+	autoUpdater.on('update-available', (info) => {
+		mainWindow?.webContents.send('update-status', { status: 'available', version: info.version });
+	});
+
+	autoUpdater.on('download-progress', (progress) => {
+		mainWindow?.webContents.send('update-status', { status: 'downloading', percent: Math.round(progress.percent) });
+	});
+
+	autoUpdater.on('update-downloaded', (info) => {
+		mainWindow?.webContents.send('update-status', { status: 'ready', version: info.version });
+	});
+
+	autoUpdater.on('error', () => {
+		// Silent fail — don't bother user if update check fails
+	});
+
+	// Check for updates after a short delay, then every 30 minutes
+	setTimeout(() => {
+		autoUpdater.checkForUpdates().catch(() => {});
+	}, 5000);
+	setInterval(() => {
+		autoUpdater.checkForUpdates().catch(() => {});
+	}, 30 * 60 * 1000);
+}
+
 app.whenReady().then(() => {
 	// Auto-grant media permissions (mic, camera) on Windows
 	session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
@@ -371,6 +415,7 @@ app.whenReady().then(() => {
 	setupProtocol();
 	setupIpc();
 	createWindow();
+	setupAutoUpdater();
 
 	app.on('activate', () => {
 		if (BrowserWindow.getAllWindows().length === 0) {

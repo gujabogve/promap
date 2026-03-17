@@ -2,13 +2,15 @@
 	"name": "promap",
 	"version": "0.1.0",
 	"description": "Projection mapping tool",
+	"author": "ProMap",
 	"main": "./out/main/index.js",
 	"scripts": {
 		"dev": "electron-vite dev",
 		"build": "electron-vite build",
 		"preview": "electron-vite preview",
 		"build:win": "electron-vite build && electron-builder --win --dir",
-		"dist:win": "electron-vite build && electron-builder --win"
+		"dist:win": "electron-vite build && electron-builder --win",
+		"release": "electron-vite build && electron-builder --win --publish always"
 	},
 	"build": {
 		"appId": "com.promap.app",
@@ -21,10 +23,15 @@
 			"build/icon.png",
 			"build/icon.ico"
 		],
+		"publish": {
+			"provider": "github",
+			"owner": "gujabogve",
+			"repo": "promap"
+		},
 		"win": {
 			"target": [
 				{
-					"target": "portable",
+					"target": "nsis",
 					"arch": [
 						"x64"
 					]
@@ -32,11 +39,16 @@
 			],
 			"icon": "build/icon.ico"
 		},
-		"portable": {
-			"artifactName": "ProMap-${version}-portable.exe"
+		"nsis": {
+			"oneClick": true,
+			"perMachine": false,
+			"allowToChangeInstallationDirectory": false,
+			"artifactName": "ProMap-Setup-${version}.exe",
+			"shortcutName": "ProMap"
 		}
 	},
 	"dependencies": {
+		"electron-updater": "^6.8.3",
 		"pixi.js": "^8.17.1",
 		"three": "^0.183.2"
 	},

@@ -102,6 +102,10 @@ export class ControlsPanel extends HTMLElement {
 		this.querySelector('#btn-shortcuts')?.addEventListener('click', () => {
 			(document.querySelector('shortcuts-modal') as ShortcutsModal)?.toggle();
 		});
+
+		this.querySelector('#btn-install-update')?.addEventListener('click', () => {
+			window.promap.installUpdate();
+		});
 	}
 
 
@@ -177,9 +181,35 @@ export class ControlsPanel extends HTMLElement {
 
 				<div class="flex-1"></div>
 
+				<span id="update-status" class="text-xs text-neutral-500 hidden"></span>
+				<button id="btn-install-update" class="px-2.5 py-1 text-xs bg-green-700 hover:bg-green-600 rounded border border-green-600 text-green-100 hidden">Update</button>
 				<button id="btn-shortcuts" class="px-2.5 py-1 text-xs bg-neutral-800 hover:bg-neutral-700 rounded border border-neutral-600 text-neutral-300" title="Shortcuts (?)">⌨</button>
+				<span id="app-version" class="text-xs text-neutral-600"></span>
 			</div>
 		`;
+
+		window.promap.getAppVersion().then(v => {
+			const el = this.querySelector('#app-version');
+			if (el) el.textContent = `v${v}`;
+		});
+
+		window.promap.onUpdateStatus((status) => {
+			const statusEl = this.querySelector('#update-status') as HTMLElement;
+			const installBtn = this.querySelector('#btn-install-update') as HTMLElement;
+			if (!statusEl) return;
+
+			if (status.status === 'available') {
+				statusEl.textContent = `v${status.version} available`;
+				statusEl.classList.remove('hidden');
+			} else if (status.status === 'downloading') {
+				statusEl.textContent = `Downloading ${status.percent}%`;
+				statusEl.classList.remove('hidden');
+			} else if (status.status === 'ready') {
+				statusEl.textContent = `v${status.version} ready`;
+				statusEl.classList.remove('hidden');
+				installBtn?.classList.remove('hidden');
+			}
+		});
 	}
 }
 

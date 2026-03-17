@@ -25,6 +25,11 @@ export interface PromapAPI {
 	prolinkRunning: () => Promise<boolean>;
 	onProlinkStatus: (callback: (status: CDJStatusData) => void) => void;
 	onProlinkDeviceFound: (callback: (device: { deviceId: number; deviceName: string }) => void) => void;
+	// Auto-update
+	checkForUpdates: () => Promise<boolean>;
+	installUpdate: () => Promise<boolean>;
+	getAppVersion: () => Promise<string>;
+	onUpdateStatus: (callback: (status: { status: string; version?: string; percent?: number }) => void) => void;
 }
 
 export interface ScreenInfo {

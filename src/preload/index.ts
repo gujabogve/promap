@@ -29,4 +29,11 @@ contextBridge.exposeInMainWorld('promap', {
 	onProlinkDeviceFound: (callback: (device: unknown) => void) => {
 		ipcRenderer.on('prolink-device-found', (_event, device) => callback(device));
 	},
+	// Auto-update
+	checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+	installUpdate: () => ipcRenderer.invoke('install-update'),
+	getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+	onUpdateStatus: (callback: (status: { status: string; version?: string; percent?: number }) => void) => {
+		ipcRenderer.on('update-status', (_event, status) => callback(status));
+	},
 });
