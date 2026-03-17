@@ -214,7 +214,7 @@ export class GroupOptionsPanel extends HTMLElement {
 							<span id="grp-anim-speed-value" class="text-xs text-neutral-300 font-mono w-8 text-right">${anim.bpmSpeed ?? 3}x</span>
 						</div>
 					</div>
-					<div id="grp-anim-timing" class="${anim.useBpm ? 'hidden' : ''} flex gap-2">
+					<div id="grp-anim-timing" class="${anim.useBpm || anim.useMidi ? 'hidden' : ''} flex gap-2">
 						<div class="flex-1">
 							<label class="text-xs text-neutral-500 block mb-0.5">Fade (ms)</label>
 							<input id="grp-anim-fade" type="number" value="${anim.fadeDuration}" min="0" step="100" class="w-full px-2 py-1 text-xs bg-neutral-800 border border-neutral-600 rounded text-neutral-300 text-center">
@@ -379,14 +379,19 @@ export class GroupOptionsPanel extends HTMLElement {
 		});
 		this.querySelector('#grp-anim-bpm')?.addEventListener('change', (e) => {
 			const checked = (e.target as HTMLInputElement).checked;
+			const midiChecked = (this.querySelector('#grp-anim-midi') as HTMLInputElement)?.checked;
 			const timing = this.querySelector('#grp-anim-timing') as HTMLElement;
-			timing?.classList.toggle('hidden', checked);
+			timing?.classList.toggle('hidden', checked || midiChecked);
 			const speedSection = this.querySelector('#grp-anim-bpm-speed') as HTMLElement;
 			speedSection?.classList.toggle('hidden', !checked);
 			state.setGroupAnimation(groupId, getAnimOptions());
 		});
 
-		this.querySelector('#grp-anim-midi')?.addEventListener('change', () => {
+		this.querySelector('#grp-anim-midi')?.addEventListener('change', (e) => {
+			const checked = (e.target as HTMLInputElement).checked;
+			const timing = this.querySelector('#grp-anim-timing') as HTMLElement;
+			const bpmChecked = (this.querySelector('#grp-anim-bpm') as HTMLInputElement)?.checked;
+			timing?.classList.toggle('hidden', checked || bpmChecked);
 			state.setGroupAnimation(groupId, getAnimOptions());
 		});
 

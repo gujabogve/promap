@@ -6,6 +6,7 @@ export class MidiSync {
 	listeners: Set<MidiListener> = new Set();
 	beatListeners: Set<BeatListener> = new Set();
 	private _connected = false;
+	private _active = false;
 	private _devices: MIDIInput[] = [];
 	private _selectedDeviceId: string | null = null;
 
@@ -13,9 +14,20 @@ export class MidiSync {
 	private clockCount = 0;
 	private lastClockTime = 0;
 	private _bpm = 0;
+	private _lastBeatTime = 0;
 
 	get connected(): boolean {
 		return this._connected;
+	}
+
+	get active(): boolean {
+		// Active if connected via MIDI API or receiving beats (e.g. from test player)
+		return this._connected || (performance.now() - this._lastBeatTime < 3000);
+	}
+
+	fireBeat(): void {
+		this._lastBeatTime = performance.now();
+		this.beatListeners.forEach(l => l());
 	}
 
 	get devices(): { id: string; name: string }[] {
@@ -142,6 +154,7 @@ export class MidiSync {
 			this.lastClockTime = now;
 
 			// Notify beat listeners
+			this._lastBeatTime = now;
 			this.beatListeners.forEach(l => l());
 		}
 	}

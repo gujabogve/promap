@@ -395,9 +395,7 @@ export class MidiTestPanel extends HTMLElement {
 
 	// Simulate MIDI messages by directly calling midiSync's beat listeners
 	private fireBeat(): void {
-		// Access beat listeners directly
-		const listeners = (midiSync as unknown as { beatListeners: Set<() => void> }).beatListeners;
-		if (listeners) listeners.forEach(l => l());
+		midiSync.fireBeat();
 	}
 
 	private fireMessage(msg: { type: string; note?: number; velocity?: number; cc?: number; value?: number }): void {

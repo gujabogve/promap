@@ -115,7 +115,7 @@ export class CanvasManager {
 
 		// Audio beat detection — advance BPM animations on detected beats
 		audioAnalyzer.onBeat(() => {
-			if (midiSync.connected) return; // MIDI takes priority
+			if (midiSync.active) return; // MIDI takes priority
 			for (const [groupId, group] of state.getGroups()) {
 				if (group.animationPlaying && group.animation?.useBpm) {
 					state.advanceGroupAnimation(groupId);
@@ -167,7 +167,7 @@ export class CanvasManager {
 				hasGroupAnim = true;
 
 				// Tick BPM-driven animations with audio level (skip if MIDI sync is driving beats)
-				if (group.animation?.useBpm && audioAnalyzer.running && !midiSync.connected) {
+				if (group.animation?.useBpm && audioAnalyzer.running && !midiSync.active) {
 					state.tickBpmAnimation(groupId, audioAnalyzer.level);
 				}
 
@@ -415,7 +415,7 @@ export class CanvasManager {
 			const entry = this.videoEntries.get(resource.id);
 			if (!entry) continue;
 
-			if (shape.midiSync && midiSync.connected) {
+			if (shape.midiSync && midiSync.active) {
 				// MIDI sync: play at BPM-derived rate
 				if (entry.element.paused) entry.element.play().catch(() => {});
 				const midiBpm = midiSync.bpm;
