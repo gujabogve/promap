@@ -1,6 +1,6 @@
 {
 	"name": "promap",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Projection mapping tool",
 	"author": "ProMap",
 	"main": "./out/main/index.js",

@@ -2,6 +2,7 @@ import { state } from '../state/state-manager';
 import { ShapeType } from '../types';
 import { ShortcutsModal } from './shortcuts-modal';
 import { canvasManager } from './canvas-panel';
+import titlebarLogo from '../assets/titlebar.svg';
 
 export class ControlsPanel extends HTMLElement {
 	connectedCallback(): void {
@@ -135,7 +136,7 @@ export class ControlsPanel extends HTMLElement {
 	private render(): void {
 		this.innerHTML = `
 			<div class="flex items-center h-full gap-2">
-				<img src="./assets/titlebar.svg" class="h-8 mr-2" alt="ProMap" draggable="false">
+				<img src="${titlebarLogo}" class="h-8 mr-2" alt="ProMap" draggable="false">
 				<div class="h-5 w-px bg-neutral-700"></div>
 
 				<button id="btn-save" class="px-2.5 py-1 text-xs bg-neutral-800 hover:bg-neutral-700 rounded border border-neutral-600 text-neutral-300">Save</button>
