@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, protocol, net } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, protocol, net, session } from 'electron';
 import { join, extname, basename } from 'path';
 import { readFile, writeFile, copyFile, mkdir } from 'fs/promises';
 import { randomUUID } from 'crypto';
@@ -199,6 +199,15 @@ function setupIpc(): void {
 }
 
 app.whenReady().then(() => {
+	// Auto-grant media permissions (mic, camera) on Windows
+	session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+		if (permission === 'media' || permission === 'microphone' || permission === 'camera') {
+			callback(true);
+		} else {
+			callback(true);
+		}
+	});
+
 	setupProtocol();
 	setupIpc();
 	createWindow();
