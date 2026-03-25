@@ -4,62 +4,31 @@
 
 - OBS feed integration as a live video source
 
-## DJ / Audio Sync
-
-- Pro DJ Link integration (Rekordbox/CDJ direct sync via network)
-- Rekordbox, Serato, Traktor support via MIDI and/or Pro DJ Link
-
-## Shapes
-
-- Custom/complex shapes (e.g. car, logo outlines) — import SVG paths or freehand draw
-
 ## Output
 
 - Record / export projector output to video file
 
-## Timecode Synchronization
+## Timecode Synchronization (partially implemented)
 
-Timecode is a system used in professional audio, lighting, and video production to synchronize multiple devices with precise timing. It ensures that different systems — projection mapping, lighting consoles, LED screens, and audio playback — all run in perfect sync during live shows.
+MTC (MIDI Timecode) and internal timecode generation are implemented. SMPTE/LTC audio decode remains as a future feature.
 
-Timecode format: **HH:MM:SS:FF** (hours, minutes, seconds, frames). Allows events to be triggered at exact moments, down to the frame level.
+### Implemented
 
-### Supported Timecode Formats
+- MIDI Timecode (MTC) receive via quarter-frame messages
+- Internal timecode generation (HH:MM:SS:FF format)
+- Frame rate support: 24fps, 25fps, 29.97fps, 30fps
+- Offset adjustment (ms)
+- Sync status indicator (locked/unlocked)
 
-- **SMPTE/LTC (Linear Timecode)** — transmitted as an audio signal, industry standard for professional AV sync
-- **MIDI Timecode (MTC)** — transmitted via MIDI between digital systems
+### Remaining
 
-### Purpose in ProMap
+- **SMPTE/LTC (Linear Timecode)** — decode timecode from audio signal (mic/line input). Complex: requires DSP-level audio processing or native addon.
+- **Timecoded vinyl** — decode timecode audio signal from turntable output
 
-Allow the software to synchronize 3D projection mapping visuals with external systems in real-time:
+### Compatibility Notes
 
-- **Receive** external timecode and follow it accurately
-- **Generate** and send its own timecode (optional)
-- **Trigger** visuals, animations, and cues based on a timeline linked to timecode
-- **Frame-accurate** and stable during live performances
-
-### Compatibility
-
-Must be compatible with any professional lighting, audio, and video systems that support standard timecode formats, including but not limited to:
-- Lighting consoles (GrandMA, Avolites, ETC, etc.)
-- Media servers (Resolume, Disguise, etc.)
-- DAWs (Ableton, Pro Tools, etc.)
-- LED processors
+Must be compatible with professional AV systems:
+- Lighting consoles (GrandMA, Avolites, ETC)
+- Media servers (Resolume, Disguise)
+- DAWs (Ableton, Pro Tools)
 - Any SMPTE/LTC or MTC-compatible device
-
-### Key Features
-
-- **Timeline with timecode display** — HH:MM:SS:FF format
-- **Cue points** — animation triggers based on timecode positions
-- **Transport controls** — play, pause, timeline navigation synced to timecode
-- **Timecode source selection** — internal (ProMap generates) or external (follows incoming)
-- **Offset adjustment** — compensate for latency between systems (ms or frames)
-- **Sync status indicator** — visual locked/unlocked indicator showing whether ProMap is in sync with external timecode
-- **Frame rate support** — 24fps, 25fps, 29.97fps (drop-frame), 30fps
-
-### Implementation Notes
-
-- SMPTE/LTC: decode audio signal from mic/line input, extract timecode. Use Web Audio API or native addon.
-- MTC: receive via MIDI input (already have MIDI infrastructure). MTC uses quarter-frame messages for smooth tracking.
-- Internal timecode: generate from ProMap's timeline, send via MIDI out or audio out.
-- Design for professional live show environments: reliability, low latency, frame-accurate sync.
-- Consider jitter handling and flywheel algorithm for stable external timecode following.

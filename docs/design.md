@@ -44,6 +44,8 @@ Dark themed UI throughout. Dark neutral backgrounds with subtle borders and mute
   - **Video / Image** — uploaded via file dialog, thumbnails (image preview, video first frame)
   - **Text** — modal with: font, size, bold/italic, color, background (transparent option), stroke (color + width), opacity, alignment, padding, letter spacing, marquee (speed, direction left/right/up/down, loop), live preview. Double-click to edit.
   - **Color** — modal with three modes: solid (color picker), gradient (linear/radial, angle, multiple stops), animated (color keyframes at % positions, duration, easing, loop). Live preview with animation.
+  - **STL 3D Models** — binary and ASCII STL file upload, rendered with THREE.js to PixiJS canvas texture, auto-centered geometry with lighting, configurable rotation speed per shape.
+  - **SVG Shapes** — import SVG files to create custom polygon shapes. Parses paths, polygons, polylines, rects, circles, ellipses. Normalizes to shape size, simplifies to max 64 points.
 - Media library list with thumbnails, drag to assign to shapes
 - Remove resources with X button
 - Double-click text/color resources to edit
@@ -61,6 +63,11 @@ Dark themed UI throughout. Dark neutral backgrounds with subtle borders and mute
     - 16 note activity bars with velocity decay
     - BPM display, last message display
     - Test button — opens MIDI test player modal
+- **Download section** (purple pill tab):
+  - Pixabay video and vector/image search
+  - Download with automatic quality selection
+  - Local caching (localStorage)
+  - Custom API key support
 - Future: OBS feed integration as a source
 - **Cues section** (amber pill tab):
   - "+ Add" button to create new cues
@@ -197,6 +204,17 @@ Dark themed UI throughout. Dark neutral backgrounds with subtle borders and mute
 - Multiple windows supported (each runs independently with own projector ID)
 - Auto-closes when main window closes
 
+### Native GPU Renderer (optional)
+
+- Rust + wgpu native binary for projector output (replaces Electron BrowserWindow)
+- Spawned by Electron via child process, communicates via stdin/stdout (length-prefixed JSON)
+- FFmpeg hardware-accelerated video decode
+- Stencil-based shape masking with all 4 projection types
+- Toggle in Displays tab ("Native" switch), enabled by default
+- Automatic fallback to Electron window on crash
+- Docker cross-compilation for Windows (`build-win.sh`)
+- Build artifacts in `native/promap-renderer/`
+
 ### MIDI Test Player (modal)
 
 - BPM slider (60-200)
@@ -272,6 +290,34 @@ When "Use BPM" is enabled on a group sequence animation:
 - MIDI beat advances animation by one cycle (takes priority over mic when connected)
 - Visual feedback: beat dots, note bars, BPM display, last message
 
+### Beat Detection
+
+- Bass frequency energy analysis (bottom 15% of spectrum)
+- Rolling energy history (43 frames) for adaptive threshold
+- Beat sensitivity slider (1-5x multiplier over average)
+- 200ms cooldown between beats
+- BPM calculation from beat intervals (40-240 BPM range)
+- `onBeat()` callbacks advance group animations
+- Priority: MIDI/Pro DJ Link > mic beat detection
+
+### Pro DJ Link
+
+- UDP listener on ports 50000 (announce) and 50002 (status)
+- Pioneer CDJ/DJM device detection via network
+- Status parsing: BPM, beat position (1-4), play/stop, master, pitch, track position
+- Beat callbacks for animation advancement
+- DJ Link tab (orange pill) in left sidebar with connect/disconnect and device list
+- Per-shape sync: shapes with `midiSync` flag sync playback rate to CDJ BPM
+
+### Timecode
+
+- MIDI Timecode (MTC) receive via quarter-frame messages
+- Internal timecode generation (HH:MM:SS:FF format)
+- Frame rate support: 24fps, 25fps, 29.97fps, 30fps
+- Offset adjustment (milliseconds)
+- Locked/unlocked sync status indicator
+- Future: SMPTE/LTC audio decode from mic/line input
+
 ### Transition Effects (timeline keyframes)
 
 - Per-keyframe transition effect selector: none, fade, flash, dissolve
@@ -284,6 +330,7 @@ When "Use BPM" is enabled on a group sequence animation:
 
 1. **Mic-based sound level** — Web Audio API, amplitude analysis (implemented)
 2. **MIDI sync** — Web MIDI API, device selection, clock/beat detection (implemented)
-3. **Beat detection** — analyze audio for beat patterns, advance on each beat (planned)
-4. **Pro DJ Link** — direct Rekordbox/CDJ integration via `prolink-connect` (Node.js, needs Electron)
-5. **Timecoded vinyl** — decode timecode audio signal (future, complex)
+3. **Beat detection** — bass energy analysis, BPM calculation (implemented)
+4. **Pro DJ Link** — Pioneer CDJ/DJM network integration (implemented)
+5. **Timecode** — MTC receive + internal generation (implemented, SMPTE/LTC pending)
+6. **Timecoded vinyl** — decode timecode audio signal (future, complex)

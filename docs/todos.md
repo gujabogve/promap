@@ -109,7 +109,58 @@
 - [x] Active cue highlighting
 - [x] Cues persist in save/load
 
+## STL 3D Models
+
+- [x] Binary and ASCII STL file parsing
+- [x] THREE.js rendering to PixiJS canvas texture
+- [x] Rotation speed control per shape
+- [x] Auto-centered geometry with lighting
+
+## Pixabay Integration
+
+- [x] Video and vector/image search via Pixabay API
+- [x] Download with automatic quality selection
+- [x] Local caching (localStorage)
+- [x] Custom API key support
+- [x] Download tab (purple pill) in left sidebar
+
+## SVG Import
+
+- [x] Parse SVG paths, polygons, polylines, rects, circles, ellipses
+- [x] Normalize to shape size, simplify to max 64 points
+- [x] "Add SVG Shape" button in resources panel
+
+## Pro DJ Link
+
+- [x] UDP listener on ports 50000 (announce) and 50002 (status)
+- [x] Pioneer CDJ/DJM device detection and status parsing
+- [x] BPM, beat position, play/stop, master, pitch tracking
+- [x] Beat callbacks for animation advancement
+- [x] DJ Link tab (orange pill) in left sidebar
+
+## Timecode
+
+- [x] MIDI Timecode (MTC) receive via quarter-frame messages
+- [x] Internal timecode generation (HH:MM:SS:FF)
+- [x] Frame rate support (24, 25, 29.97, 30fps)
+- [x] Offset adjustment (ms)
+- [x] Locked/unlocked sync status
+
+## Native GPU Renderer
+
+- [x] Rust + wgpu native binary for projector output
+- [x] FFmpeg video decode with hardware acceleration
+- [x] Stencil-based shape masking, all 4 projection types
+- [x] Docker cross-compilation for Windows
+- [x] Toggle in Displays tab, automatic Electron fallback
+
 ## Remaining
 
-- [ ] Beat detection from audio analysis
-- [ ] Per-shape BPM sync (individual shapes, not just groups)
+- [x] Beat detection from audio analysis
+- [x] Per-shape BPM sync (individual shapes, not just groups)
+
+## Future
+
+- [ ] SMPTE/LTC timecode (audio signal decode)
+- [ ] OBS feed integration as live video source
+- [ ] Record / export projector output to video file
