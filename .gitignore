@@ -3,3 +3,12 @@ out/
 dist/
 .vite/
 release/
+
+# Rust native renderer build artifacts
+native/promap-renderer/target/
+native/promap-renderer/win-out/
+native/promap-renderer/ffmpeg-dlls/
+native/promap-renderer/*.zip
+
+# Misc
+videos.zip

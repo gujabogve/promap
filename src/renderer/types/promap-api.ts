@@ -25,6 +25,9 @@ export interface PromapAPI {
 	prolinkRunning: () => Promise<boolean>;
 	onProlinkStatus: (callback: (status: CDJStatusData) => void) => void;
 	onProlinkDeviceFound: (callback: (device: { deviceId: number; deviceName: string }) => void) => void;
+	// Native renderer
+	toggleNativeRenderer: () => Promise<boolean>;
+	isNativeRenderer: () => Promise<boolean>;
 	// Auto-update
 	checkForUpdates: () => Promise<boolean>;
 	installUpdate: () => Promise<boolean>;

@@ -1,0 +1,37 @@
+FROM rust:1.87-bookworm
+
+# Install mingw cross-compiler and build tools
+RUN apt-get update && apt-get install -y \
+	gcc-mingw-w64-x86-64 \
+	g++-mingw-w64-x86-64 \
+	wget \
+	unzip \
+	pkg-config \
+	nasm \
+	clang \
+	libclang-dev \
+	&& rm -rf /var/lib/apt/lists/*
+
+# Add Windows target
+RUN rustup target add x86_64-pc-windows-gnu
+
+# Download pre-built FFmpeg dev libs for Windows (gyan.dev shared build)
+RUN mkdir -p /opt/ffmpeg-win && \
+	wget -q "https://github.com/GyanD/codexffmpeg/releases/download/7.1.1/ffmpeg-7.1.1-full_build-shared.zip" \
+	-O /tmp/ffmpeg.zip && \
+	unzip -q /tmp/ffmpeg.zip -d /tmp/ffmpeg && \
+	cp -r /tmp/ffmpeg/ffmpeg-7.1.1-full_build-shared/* /opt/ffmpeg-win/ && \
+	rm -rf /tmp/ffmpeg /tmp/ffmpeg.zip
+
+# Set up pkg-config for cross-compilation
+ENV PKG_CONFIG_ALLOW_CROSS=1
+ENV FFMPEG_DIR=/opt/ffmpeg-win
+ENV FFMPEG_INCLUDE_DIR=/opt/ffmpeg-win/include
+ENV FFMPEG_LIB_DIR=/opt/ffmpeg-win/lib
+
+# Linker config for mingw
+ENV CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc
+ENV CC_x86_64_pc_windows_gnu=x86_64-w64-mingw32-gcc
+ENV CXX_x86_64_pc_windows_gnu=x86_64-w64-mingw32-g++
+
+WORKDIR /src

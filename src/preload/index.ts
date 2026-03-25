@@ -29,6 +29,9 @@ contextBridge.exposeInMainWorld('promap', {
 	onProlinkDeviceFound: (callback: (device: unknown) => void) => {
 		ipcRenderer.on('prolink-device-found', (_event, device) => callback(device));
 	},
+	// Native renderer
+	toggleNativeRenderer: () => ipcRenderer.invoke('toggle-native-renderer'),
+	isNativeRenderer: () => ipcRenderer.invoke('is-native-renderer'),
 	// Auto-update
 	checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
 	installUpdate: () => ipcRenderer.invoke('install-update'),

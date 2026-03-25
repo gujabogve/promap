@@ -1,8 +1,9 @@
 import { app, BrowserWindow, ipcMain, dialog, protocol, net, session, screen } from 'electron';
 import { join, extname, basename } from 'path';
 import { readFile, writeFile, copyFile, mkdir, stat } from 'fs/promises';
-import { createReadStream } from 'fs';
+import { createReadStream, existsSync } from 'fs';
 import { randomUUID } from 'crypto';
+import { spawn, ChildProcess } from 'child_process';
 import { autoUpdater } from 'electron-updater';
 import { prolinkListener } from './prolink';
 
@@ -27,7 +28,40 @@ protocol.registerSchemesAsPrivileged([
 
 let mainWindow: BrowserWindow | null = null;
 const externalWindows: Map<number, BrowserWindow> = new Map();
+const nativeProcesses: Map<number, ChildProcess> = new Map();
 let nextProjectorId = 1;
+let useNativeRenderer = true;
+
+function getNativeRendererPath(): string | null {
+	const paths = [
+		join(process.resourcesPath ?? '', 'native', 'promap-renderer.exe'),
+		join(app.getAppPath(), 'native', 'promap-renderer', 'win-out', 'promap-renderer.exe'),
+		join(app.getAppPath(), 'native', 'promap-renderer', 'target', 'release', 'promap-renderer.exe'),
+	];
+	return paths.find(p => existsSync(p)) ?? null;
+}
+
+function sendToNative(child: ChildProcess, msg: object): void {
+	const json = Buffer.from(JSON.stringify(msg));
+	const len = Buffer.alloc(4);
+	len.writeUInt32LE(json.length);
+	child.stdin?.write(len);
+	child.stdin?.write(json);
+}
+
+function resolveMediaUrls(data: string): string {
+	const mediaDir = MEDIA_DIR();
+	const parsed = JSON.parse(data);
+	if (parsed.resources) {
+		for (const res of parsed.resources) {
+			if (res.src && res.src.startsWith('media://')) {
+				const filename = res.src.replace('media://', '');
+				res.resolvedSrc = join(mediaDir, filename);
+			}
+		}
+	}
+	return JSON.stringify(parsed);
+}
 
 function createWindow(): void {
 	mainWindow = new BrowserWindow({
@@ -161,8 +195,9 @@ function setupIpc(): void {
 	ipcMain.handle('open-external-window', async (_event, projectorId?: number, screenId?: number) => {
 		const id = projectorId ?? nextProjectorId++;
 
-		if (externalWindows.has(id)) {
-			externalWindows.get(id)!.focus();
+		// Check if already open (native or electron)
+		if (nativeProcesses.has(id) || externalWindows.has(id)) {
+			if (externalWindows.has(id)) externalWindows.get(id)!.focus();
 			return id;
 		}
 
@@ -172,6 +207,52 @@ function setupIpc(): void {
 			targetDisplay = screen.getAllDisplays().find(d => d.id === screenId) ?? null;
 		}
 
+		const displays = screen.getAllDisplays();
+		const monitorIndex = targetDisplay ? displays.indexOf(targetDisplay) : 0;
+
+		// Try native renderer first
+		const nativePath = useNativeRenderer ? getNativeRendererPath() : null;
+		if (nativePath) {
+			const child = spawn(nativePath, [
+				'--projector-id', String(id),
+				'--monitor', String(monitorIndex),
+			], {
+				stdio: ['pipe', 'pipe', 'pipe'],
+			});
+
+			child.stderr?.on('data', (data: Buffer) => {
+				console.log(`[native-renderer ${id}] ${data.toString().trim()}`);
+			});
+
+			child.stdout?.on('data', (data: Buffer) => {
+				// Handle length-prefixed messages from native renderer
+				try {
+					// Simple: just log ready/error messages for now
+					const str = data.toString();
+					if (str.includes('"ready"')) {
+						console.log(`[native-renderer ${id}] Ready`);
+					}
+				} catch {}
+			});
+
+			child.on('exit', (code) => {
+				console.log(`[native-renderer ${id}] Exited with code ${code}`);
+				nativeProcesses.delete(id);
+				mainWindow?.webContents.send('external-window-closed', id);
+
+				// Fallback to Electron window on crash
+				if (code !== 0 && code !== null) {
+					console.log(`[native-renderer ${id}] Crashed, falling back to Electron window`);
+					useNativeRenderer = false;
+					ipcMain.emit('open-external-window', _event, id, screenId);
+				}
+			});
+
+			nativeProcesses.set(id, child);
+			return id;
+		}
+
+		// Fallback: Electron BrowserWindow
 		const bounds = targetDisplay?.bounds ?? { x: 100, y: 100, width: 1920, height: 1080 };
 
 		const win = new BrowserWindow({
@@ -219,10 +300,23 @@ function setupIpc(): void {
 
 	ipcMain.handle('close-external-window', (_event, projectorId?: number) => {
 		if (projectorId !== undefined) {
+			// Close native process
+			const child = nativeProcesses.get(projectorId);
+			if (child) {
+				sendToNative(child, { type: 'shutdown' });
+				setTimeout(() => child.kill(), 2000); // Force kill after 2s
+				nativeProcesses.delete(projectorId);
+			}
+			// Close electron window
 			const win = externalWindows.get(projectorId);
 			if (win && !win.isDestroyed()) win.close();
 			externalWindows.delete(projectorId);
 		} else {
+			for (const [, child] of nativeProcesses) {
+				sendToNative(child, { type: 'shutdown' });
+				setTimeout(() => child.kill(), 2000);
+			}
+			nativeProcesses.clear();
 			for (const [id, win] of externalWindows) {
 				if (!win.isDestroyed()) win.close();
 				externalWindows.delete(id);
@@ -232,20 +326,39 @@ function setupIpc(): void {
 	});
 
 	ipcMain.handle('is-external-window-open', (_event, projectorId?: number) => {
-		if (projectorId !== undefined) return externalWindows.has(projectorId);
-		return externalWindows.size > 0;
+		if (projectorId !== undefined) return externalWindows.has(projectorId) || nativeProcesses.has(projectorId);
+		return externalWindows.size > 0 || nativeProcesses.size > 0;
 	});
 
 	ipcMain.handle('get-projector-list', () => {
-		return [...externalWindows.keys()];
+		return [...new Set([...externalWindows.keys(), ...nativeProcesses.keys()])];
 	});
 
 	ipcMain.on('sync-external', (_event, data: string) => {
+		// Send to Electron windows
 		for (const [, win] of externalWindows) {
 			if (!win.isDestroyed()) {
 				win.webContents.send('state-update', data);
 			}
 		}
+		// Send to native processes (with resolved media paths)
+		if (nativeProcesses.size > 0) {
+			const resolved = resolveMediaUrls(data);
+			const parsed = JSON.parse(resolved);
+			for (const [, child] of nativeProcesses) {
+				sendToNative(child, { type: 'state-update', state: parsed });
+			}
+		}
+	});
+
+	ipcMain.handle('toggle-native-renderer', () => {
+		useNativeRenderer = !useNativeRenderer;
+		console.log(`Native renderer: ${useNativeRenderer ? 'enabled' : 'disabled'}`);
+		return useNativeRenderer;
+	});
+
+	ipcMain.handle('is-native-renderer', () => {
+		return useNativeRenderer;
 	});
 
 	ipcMain.handle('upload-media', async () => {

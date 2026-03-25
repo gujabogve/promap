@@ -1,65 +1,72 @@
 {
-	"name": "promap",
-	"version": "0.1.1",
-	"description": "Projection mapping tool",
-	"author": "ProMap",
-	"main": "./out/main/index.js",
-	"scripts": {
-		"dev": "electron-vite dev",
-		"build": "electron-vite build",
-		"preview": "electron-vite preview",
-		"build:win": "electron-vite build && electron-builder --win --dir",
-		"dist:win": "electron-vite build && electron-builder --win",
-		"release": "electron-vite build && electron-builder --win --publish always"
-	},
-	"build": {
-		"appId": "com.promap.app",
-		"productName": "ProMap",
-		"directories": {
-			"output": "release"
-		},
-		"files": [
-			"out/**/*",
-			"build/icon.png",
-			"build/icon.ico"
-		],
-		"publish": {
-			"provider": "github",
-			"owner": "gujabogve",
-			"repo": "promap"
-		},
-		"win": {
-			"target": [
-				{
-					"target": "nsis",
-					"arch": [
-						"x64"
-					]
-				}
-			],
-			"icon": "build/icon.ico"
-		},
-		"nsis": {
-			"oneClick": true,
-			"perMachine": false,
-			"allowToChangeInstallationDirectory": false,
-			"artifactName": "ProMap-Setup-${version}.exe",
-			"shortcutName": "ProMap"
-		}
-	},
-	"dependencies": {
-		"electron-updater": "^6.8.3",
-		"pixi.js": "^8.17.1",
-		"three": "^0.183.2"
-	},
-	"devDependencies": {
-		"@tailwindcss/vite": "^4.2.1",
-		"@types/three": "^0.183.1",
-		"electron": "^41.0.2",
-		"electron-builder": "^26.8.1",
-		"electron-vite": "^5.0.0",
-		"tailwindcss": "^4.2.1",
-		"typescript": "^5.9.3",
-		"vite": "^8.0.0"
-	}
+  "name": "promap",
+  "version": "0.1.2",
+  "description": "Projection mapping tool",
+  "author": "ProMap",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "build:win": "electron-vite build && electron-builder --win --dir",
+    "dist:win": "electron-vite build && electron-builder --win",
+    "release": "electron-vite build && electron-builder --win --publish always"
+  },
+  "build": {
+    "appId": "com.promap.app",
+    "productName": "ProMap",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "build/icon.png",
+      "build/icon.ico"
+    ],
+    "extraResources": [
+      {
+        "from": "native/promap-renderer/win-out/",
+        "to": "native",
+        "filter": ["**/*"]
+      }
+    ],
+    "publish": {
+      "provider": "github",
+      "owner": "gujabogve",
+      "repo": "promap"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "artifactName": "ProMap-Setup-${version}.exe",
+      "shortcutName": "ProMap"
+    }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.3",
+    "pixi.js": "^8.17.1",
+    "three": "^0.183.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.2.1",
+    "@types/three": "^0.183.1",
+    "electron": "^41.0.2",
+    "electron-builder": "^26.8.1",
+    "electron-vite": "^5.0.0",
+    "tailwindcss": "^4.2.1",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.0"
+  }
 }
