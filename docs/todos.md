@@ -97,6 +97,18 @@
 - [x] Media files via `media://` protocol
 - [x] Full state: undo/redo, keyframes, groups, animation config
 
+## MIDI Cues
+
+- [x] Cues tab in left sidebar (amber pill)
+- [x] Add/remove/edit cues with name, MIDI note, start/end time
+- [x] MIDI learn mode (click badge, press key to assign)
+- [x] Duplicate MIDI key prevention
+- [x] Cue triggering via MIDI (loop timeline segment)
+- [x] Toggle (same key stops, different key switches)
+- [x] Start/End time buttons (grab from timeline position)
+- [x] Active cue highlighting
+- [x] Cues persist in save/load
+
 ## Remaining
 
 - [ ] Beat detection from audio analysis

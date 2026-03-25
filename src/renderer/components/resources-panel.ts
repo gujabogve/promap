@@ -10,7 +10,7 @@ import { createShapeFromSVGFile } from '../utils/svg-parser';
 
 export class ResourcesPanel extends HTMLElement {
 	private meterRafId: number | null = null;
-	private activeTab: 'resources' | 'download' | 'audio' | 'djlink' | 'displays' = 'resources';
+	private activeTab: 'resources' | 'download' | 'audio' | 'djlink' | 'cues' | 'displays' = 'resources';
 
 	connectedCallback(): void {
 		this.className = 'block bg-neutral-900 shrink-0 overflow-visible relative';
@@ -18,8 +18,18 @@ export class ResourcesPanel extends HTMLElement {
 		this.renderPanel();
 		this.setupListeners();
 		this.renderList();
-		state.subscribe(() => { if (this.activeTab === 'resources') this.renderList(); });
+		state.subscribe(() => {
+			if (this.activeTab === 'resources') this.renderList();
+			if (this.activeTab === 'cues') { this.renderPanel(); this.setupListeners(); }
+		});
 		this.startMeter();
+
+		// MIDI note listener for cues
+		midiSync.onMessage((msg) => {
+			if (msg.type === 'noteon' && msg.note !== undefined && msg.velocity !== undefined) {
+				state.handleMidiNoteForCues(msg.note, msg.velocity);
+			}
+		});
 		if (this.selectedAudioOutput) this.setAudioOutput(this.selectedAudioOutput);
 	}
 
@@ -40,6 +50,7 @@ export class ResourcesPanel extends HTMLElement {
 					${this.renderPill('download', 'Download', 'purple')}
 					${this.renderPill('audio', 'Audio', 'green')}
 					${this.renderPill('djlink', 'DJ Link', 'orange')}
+					${this.renderPill('cues', 'Cues', 'amber')}
 					${this.renderPill('displays', 'Displays', 'cyan')}
 				</div>
 			</div>
@@ -53,6 +64,7 @@ export class ResourcesPanel extends HTMLElement {
 			download: active ? 'text-purple-400 bg-neutral-800 border-l-2 border-purple-500' : '',
 			audio: active ? 'text-green-400 bg-neutral-800 border-l-2 border-green-500' : '',
 			djlink: active ? 'text-orange-400 bg-neutral-800 border-l-2 border-orange-500' : '',
+			cues: active ? 'text-amber-400 bg-neutral-800 border-l-2 border-amber-500' : '',
 			displays: active ? 'text-cyan-400 bg-neutral-800 border-l-2 border-cyan-500' : '',
 		};
 		const cls = colors[tab] || (active ? '' : 'text-neutral-500 bg-neutral-900/80 hover:text-neutral-300 hover:bg-neutral-800');
@@ -66,6 +78,7 @@ export class ResourcesPanel extends HTMLElement {
 			case 'download': return this.renderDownloadTab();
 			case 'audio': return this.renderAudioTab();
 			case 'djlink': return this.renderDJLinkTab();
+			case 'cues': return this.renderCuesTab();
 			case 'displays': return this.renderDisplaysTab();
 		}
 	}
@@ -196,6 +209,73 @@ export class ResourcesPanel extends HTMLElement {
 		`;
 	}
 
+	private renderCuesTab(): string {
+		const cues = state.getCues();
+		const activeCueId = state.activeCueId;
+		const learningId = state.midiLearnCueId;
+
+		const formatTime = (ms: number): string => {
+			const totalSec = Math.floor(ms / 1000);
+			const min = Math.floor(totalSec / 60);
+			const sec = totalSec % 60;
+			return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+		};
+
+		const noteToName = (note: number): string => {
+			const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+			return names[note % 12] + (Math.floor(note / 12) - 1);
+		};
+
+		let cuesHtml = '';
+		if (cues.length === 0) {
+			cuesHtml = '<div class="text-xs text-neutral-500 text-center py-4">No cues configured</div>';
+		} else {
+			cuesHtml = cues.map(cue => {
+				const isActive = activeCueId === cue.id;
+				const isLearning = learningId === cue.id;
+				const noteBadge = isLearning
+					? '<span class="animate-pulse text-amber-400">...</span>'
+					: cue.midiNote !== null
+						? noteToName(cue.midiNote)
+						: '?';
+				const badgeClass = isLearning
+					? 'bg-amber-700/50 border-amber-600 text-amber-300'
+					: cue.midiNote !== null
+						? 'bg-neutral-700 border-neutral-600 text-neutral-200'
+						: 'bg-neutral-800 border-neutral-600 text-neutral-500 cursor-pointer';
+
+				return `
+					<div class="mb-2 p-2 rounded border ${isActive ? 'bg-green-900/20 border-green-700/50' : 'bg-neutral-850 border-neutral-700'}">
+						<div class="flex items-center gap-2 mb-1.5">
+							<button data-cue-learn="${cue.id}" class="w-8 h-6 flex items-center justify-center text-xs rounded border font-mono ${badgeClass}" title="${isLearning ? 'Listening for MIDI...' : cue.midiNote !== null ? 'Click to reassign' : 'Click to learn MIDI key'}">${noteBadge}</button>
+							<input data-cue-name="${cue.id}" type="text" value="${cue.name}" class="flex-1 min-w-0 px-1.5 py-0.5 text-xs bg-neutral-800 border border-neutral-600 rounded text-neutral-200">
+							<button data-cue-delete="${cue.id}" class="text-xs text-red-400 hover:text-red-300" title="Delete">✕</button>
+						</div>
+						<div class="flex items-center gap-1.5">
+							<span class="text-xs text-neutral-400 font-mono">${formatTime(cue.startTime)}</span>
+							<span class="text-xs text-neutral-500">→</span>
+							<span class="text-xs text-neutral-400 font-mono">${formatTime(cue.endTime)}</span>
+							<div class="flex-1"></div>
+							<button data-cue-start="${cue.id}" class="w-5 h-5 flex items-center justify-center text-xs bg-neutral-700 hover:bg-neutral-600 rounded border border-neutral-600 text-neutral-300" title="Set start to current time">S</button>
+							<button data-cue-end="${cue.id}" class="w-5 h-5 flex items-center justify-center text-xs bg-neutral-700 hover:bg-neutral-600 rounded border border-neutral-600 text-neutral-300" title="Set end to current time">E</button>
+							${isActive ? '<button data-cue-stop class="px-1.5 h-5 flex items-center justify-center text-xs bg-red-800 hover:bg-red-700 rounded border border-red-700 text-red-200" title="Stop">■</button>' : ''}
+						</div>
+					</div>
+				`;
+			}).join('');
+		}
+
+		return `
+			<div class="flex-1 overflow-y-auto p-3">
+				<div class="flex items-center justify-between mb-3">
+					<h2 class="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Cues</h2>
+					<button id="btn-add-cue" class="px-2 py-0.5 text-xs bg-amber-800 hover:bg-amber-700 rounded border border-amber-700 text-amber-200">+ Add</button>
+				</div>
+				${cuesHtml}
+			</div>
+		`;
+	}
+
 	private renderDisplaysTab(): string {
 		const projectorIds = state.getProjectorIds();
 		const shapes = state.getShapes();
@@ -269,7 +349,17 @@ export class ResourcesPanel extends HTMLElement {
 			<div class="flex-1 overflow-y-auto p-3">
 				<div class="flex items-center justify-between mb-3">
 					<h2 class="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Displays</h2>
-					<button id="btn-add-projector" class="px-2 py-0.5 text-xs bg-cyan-800 hover:bg-cyan-700 rounded border border-cyan-700 text-cyan-200">+ Add</button>
+					<div class="flex items-center gap-2">
+						<label id="native-renderer-toggle" class="flex items-center gap-1 cursor-pointer" title="Use native GPU renderer (better video performance)">
+							<span class="text-xs text-neutral-500">Native</span>
+							<div class="relative">
+								<input type="checkbox" id="chk-native-renderer" class="sr-only peer">
+								<div class="w-7 h-4 bg-neutral-700 rounded-full peer-checked:bg-cyan-700 transition-colors"></div>
+								<div class="absolute left-0.5 top-0.5 w-3 h-3 bg-neutral-400 rounded-full peer-checked:translate-x-3 peer-checked:bg-cyan-200 transition-all"></div>
+							</div>
+						</label>
+						<button id="btn-add-projector" class="px-2 py-0.5 text-xs bg-cyan-800 hover:bg-cyan-700 rounded border border-cyan-700 text-cyan-200">+ Add</button>
+					</div>
 				</div>
 				${unassignedHtml}
 				${projectorsHtml}
@@ -356,7 +446,74 @@ export class ResourcesPanel extends HTMLElement {
 			this.renderDownloadedList();
 		}
 
+		if (this.activeTab === 'cues') {
+			this.querySelector('#btn-add-cue')?.addEventListener('click', () => {
+				state.addCue();
+				this.renderPanel();
+				this.setupListeners();
+			});
+
+			this.querySelectorAll<HTMLElement>('[data-cue-learn]').forEach(btn => {
+				btn.addEventListener('click', () => {
+					const id = btn.dataset.cueLearn!;
+					if (state.midiLearnCueId === id) {
+						state.cancelMidiLearn();
+					} else {
+						state.startMidiLearn(id);
+					}
+					this.renderPanel();
+					this.setupListeners();
+				});
+			});
+
+			this.querySelectorAll<HTMLElement>('[data-cue-delete]').forEach(btn => {
+				btn.addEventListener('click', () => {
+					state.removeCue(btn.dataset.cueDelete!);
+					this.renderPanel();
+					this.setupListeners();
+				});
+			});
+
+			this.querySelectorAll<HTMLInputElement>('[data-cue-name]').forEach(input => {
+				input.addEventListener('change', () => {
+					state.updateCue(input.dataset.cueName!, { name: input.value });
+				});
+			});
+
+			this.querySelectorAll<HTMLElement>('[data-cue-start]').forEach(btn => {
+				btn.addEventListener('click', () => {
+					state.updateCue(btn.dataset.cueStart!, { startTime: state.timelineTime });
+					this.renderPanel();
+					this.setupListeners();
+				});
+			});
+
+			this.querySelectorAll<HTMLElement>('[data-cue-end]').forEach(btn => {
+				btn.addEventListener('click', () => {
+					state.updateCue(btn.dataset.cueEnd!, { endTime: state.timelineTime });
+					this.renderPanel();
+					this.setupListeners();
+				});
+			});
+
+			this.querySelector('[data-cue-stop]')?.addEventListener('click', () => {
+				state.stopCue();
+				this.renderPanel();
+				this.setupListeners();
+			});
+		}
+
 		if (this.activeTab === 'displays') {
+			// Native renderer toggle
+			const nativeChk = this.querySelector<HTMLInputElement>('#chk-native-renderer');
+			if (nativeChk) {
+				window.promap.isNativeRenderer().then(v => { nativeChk.checked = v; });
+				nativeChk.addEventListener('change', async () => {
+					const enabled = await window.promap.toggleNativeRenderer();
+					nativeChk.checked = enabled;
+				});
+			}
+
 			// Add projector (config only, no window)
 			this.querySelector('#btn-add-projector')?.addEventListener('click', () => {
 				state.addProjector();

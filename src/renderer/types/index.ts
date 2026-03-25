@@ -127,6 +127,14 @@ export interface GroupKeyframeData {
 	transitionEffect: TransitionEffect;
 }
 
+export interface CueData {
+	id: string;
+	name: string;
+	midiNote: number | null;
+	startTime: number;
+	endTime: number;
+}
+
 export interface ShapeData {
 	id: string;
 	name: string;

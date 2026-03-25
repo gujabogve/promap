@@ -1,4 +1,4 @@
-import { ShapeData, ShapeType, Point, ResourceData, KeyframeData, GroupAnimationOptions, TransitionEffect, GroupKeyframeData, ShapeSnapshot } from '../types';
+import { ShapeData, ShapeType, Point, ResourceData, KeyframeData, GroupAnimationOptions, TransitionEffect, GroupKeyframeData, ShapeSnapshot, CueData } from '../types';
 import '../types/promap-api';
 
 interface ProjectConfig {
@@ -16,6 +16,7 @@ interface ProjectConfig {
 	projectorConfigs?: Record<number, { screenId: number | null }>;
 	projectorDisplayOptions?: Record<number, { showOutline: boolean; showPoints: boolean; showGrid: boolean; showFace: boolean }>;
 	shapeTemplates?: Array<{ id: string; name: string; points: Point[] }>;
+	cues?: CueData[];
 }
 
 type Listener = () => void;
@@ -59,6 +60,9 @@ class StateManager {
 	audioSourceId: string | null = null;
 	hdmiSourceId: string | null = null;
 	shapeTemplates: Array<{ id: string; name: string; points: Point[] }> = [];
+	private cues: CueData[] = [];
+	activeCueId: string | null = null;
+	midiLearnCueId: string | null = null;
 
 	subscribe(listener: Listener): () => void {
 		this.listeners.add(listener);
@@ -877,7 +881,92 @@ class StateManager {
 	stopTimeline(): void {
 		this.pauseTimeline();
 		this.timelineTime = 0;
+		this.activeCueId = null;
 		this.notify();
+	}
+
+	// ─── Cues ───────────────────────────────────────────────
+
+	getCues(): CueData[] {
+		return this.cues;
+	}
+
+	addCue(): CueData {
+		const cue: CueData = {
+			id: crypto.randomUUID(),
+			name: `Cue ${this.cues.length + 1}`,
+			midiNote: null,
+			startTime: 0,
+			endTime: this.timelineDuration,
+		};
+		this.cues.push(cue);
+		this.notify();
+		return cue;
+	}
+
+	removeCue(id: string): void {
+		if (this.activeCueId === id) this.stopCue();
+		if (this.midiLearnCueId === id) this.midiLearnCueId = null;
+		this.cues = this.cues.filter(c => c.id !== id);
+		this.notify();
+	}
+
+	updateCue(id: string, updates: Partial<Omit<CueData, 'id'>>): void {
+		const cue = this.cues.find(c => c.id === id);
+		if (!cue) return;
+		Object.assign(cue, updates);
+		this.notify();
+	}
+
+	triggerCue(id: string): void {
+		if (this.activeCueId === id) {
+			this.stopCue();
+			return;
+		}
+		const cue = this.cues.find(c => c.id === id);
+		if (!cue) return;
+		this.activeCueId = id;
+		this.setTimelineTime(cue.startTime);
+		if (!this.timelinePlaying) this.playTimeline();
+		this.notify();
+	}
+
+	stopCue(): void {
+		this.activeCueId = null;
+		this.pauseTimeline();
+		this.notify();
+	}
+
+	startMidiLearn(cueId: string): void {
+		this.midiLearnCueId = cueId;
+		this.notify();
+	}
+
+	cancelMidiLearn(): void {
+		this.midiLearnCueId = null;
+		this.notify();
+	}
+
+	isNoteUsed(note: number, excludeCueId?: string): boolean {
+		return this.cues.some(c => c.midiNote === note && c.id !== excludeCueId);
+	}
+
+	handleMidiNoteForCues(note: number, velocity: number): void {
+		if (velocity === 0) return;
+
+		// MIDI learn mode
+		if (this.midiLearnCueId) {
+			if (!this.isNoteUsed(note, this.midiLearnCueId)) {
+				this.updateCue(this.midiLearnCueId, { midiNote: note });
+				this.midiLearnCueId = null;
+				this.notify();
+			}
+			return;
+		}
+
+		// Trigger matching cue
+		const cue = this.cues.find(c => c.midiNote === note);
+		if (cue) this.triggerCue(cue.id);
 	}
 
 	private tickTimeline(): void {
@@ -888,8 +977,15 @@ class StateManager {
 		this.lastTickTime = now;
 
 		this.timelineTime += delta;
-		if (this.timelineTime >= this.timelineDuration) {
-			this.timelineTime = 0; // loop
+
+		// Cue looping — loop between start and end of active cue
+		if (this.activeCueId) {
+			const cue = this.cues.find(c => c.id === this.activeCueId);
+			if (cue && this.timelineTime >= cue.endTime) {
+				this.timelineTime = cue.startTime;
+			}
+		} else if (this.timelineTime >= this.timelineDuration) {
+			this.timelineTime = 0; // normal loop
 		}
 
 		this.applyKeyframes();
@@ -1181,6 +1277,7 @@ class StateManager {
 			projectorConfigs: Object.fromEntries(this.projectorConfigs),
 			projectorDisplayOptions: Object.fromEntries(this.projectorDisplayOptions),
 			shapeTemplates: this.shapeTemplates,
+			cues: this.cues,
 		};
 		return JSON.stringify(config, null, '\t');
 	}
@@ -1202,6 +1299,9 @@ class StateManager {
 		this.projectorDisplayOptions = new Map(Object.entries(config.projectorDisplayOptions ?? {}).map(([k, v]) => [Number(k), v]));
 		this.nextProjectorId = Math.max(0, ...this.projectorConfigs.keys()) + 1;
 		this.shapeTemplates = config.shapeTemplates ?? [];
+		this.cues = config.cues ?? [];
+		this.activeCueId = null;
+		this.midiLearnCueId = null;
 		this.selectedGroupId = null;
 		this.timelineTime = 0;
 		this.timelinePlaying = false;

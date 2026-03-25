@@ -62,6 +62,15 @@ Dark themed UI throughout. Dark neutral backgrounds with subtle borders and mute
     - BPM display, last message display
     - Test button — opens MIDI test player modal
 - Future: OBS feed integration as a source
+- **Cues section** (amber pill tab):
+  - "+ Add" button to create new cues
+  - Per-cue card with MIDI note badge, editable name, start/end times
+  - MIDI learn: click badge to assign a MIDI key (listens for next note-on)
+  - "S" / "E" buttons: set start/end to current timeline position
+  - Pressing assigned MIDI key loops timeline between start and end times
+  - Pressing same key again stops, pressing different cue key switches
+  - Active cue highlighted with green border
+  - Duplicate MIDI keys prevented
 
 ### Canvas (center, fills remaining space)
 
