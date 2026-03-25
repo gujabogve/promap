@@ -5,7 +5,7 @@ import { audioAnalyzer } from '../audio/audio-analyzer';
 import { PixelateFilter, RGBSplitFilter, DistortionFilter, GlitchFilter, VignetteFilter, NoiseColorFilter, WaveFilter } from './custom-filters';
 import { midiSync } from '../audio/midi-sync';
 import { prolinkBridge } from '../audio/prolink-bridge';
-import { createStlEntry, tickStlEntries } from '../utils/stl-renderer';
+import { createStlEntry, destroyStlEntry, tickStlEntries } from '../utils/stl-renderer';
 
 const POINT_RADIUS = 6;
 const POINT_COLOR = 0x3b82f6;
@@ -1194,6 +1194,18 @@ export class CanvasManager {
 	}
 
 	clearResourceCache(resourceId: string): void {
+		const videoEntry = this.videoEntries.get(resourceId);
+		if (videoEntry) {
+			videoEntry.element.pause();
+			videoEntry.element.removeAttribute('src');
+			videoEntry.element.load();
+			videoEntry.source.destroy();
+		}
+		const texture = this.textureCache.get(resourceId);
+		if (texture) {
+			texture.destroy();
+		}
+		destroyStlEntry(resourceId);
 		this.textureCache.delete(resourceId);
 		this.loadingTextures.delete(resourceId);
 		this.videoEntries.delete(resourceId);
@@ -1202,12 +1214,17 @@ export class CanvasManager {
 	}
 
 	private clearCaches(): void {
-		this.textureCache.clear();
-		this.loadingTextures.clear();
 		for (const entry of this.videoEntries.values()) {
 			entry.element.pause();
-			entry.element.src = '';
+			entry.element.removeAttribute('src');
+			entry.element.load();
+			entry.source.destroy();
 		}
+		for (const texture of this.textureCache.values()) {
+			texture.destroy();
+		}
+		this.textureCache.clear();
+		this.loadingTextures.clear();
 		this.videoEntries.clear();
 		this.textEntries.clear();
 		this.colorEntries.clear();

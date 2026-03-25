@@ -2,7 +2,7 @@ import './types/promap-api';
 import { Application, Graphics, Sprite, Texture, VideoSource, ImageSource, CanvasSource, Container, BlurFilter, ColorMatrixFilter, Filter } from 'pixi.js';
 import { PixelateFilter, RGBSplitFilter, DistortionFilter, GlitchFilter, VignetteFilter, NoiseColorFilter, WaveFilter } from './canvas/custom-filters';
 import { ShapeData, ResourceData, ColorOptions, TextOptions, GroupAnimationOptions, EasingType } from './types';
-import { createStlEntry, tickStlEntries, updateStlRotationSpeed } from './utils/stl-renderer';
+import { createStlEntry, destroyStlEntry, tickStlEntries, updateStlRotationSpeed } from './utils/stl-renderer';
 
 interface GroupState {
 	name: string;
@@ -75,10 +75,8 @@ class ExternalRenderer {
 					});
 					const oldFp = this.resourceFingerprints.get(res.id);
 					if (oldFp && oldFp !== fp) {
-						// Resource changed — clear cached texture
-						this.textureCache.delete(res.id);
-						this.loadingTextures.delete(res.id);
-						this.videoEntries.delete(res.id);
+						// Resource changed — dispose old resources before clearing
+						this.disposeResource(res.id);
 					}
 					this.resourceFingerprints.set(res.id, fp);
 				}
@@ -87,10 +85,8 @@ class ExternalRenderer {
 				const currentIds = new Set(newState.resources.map(r => r.id));
 				for (const id of this.resourceFingerprints.keys()) {
 					if (!currentIds.has(id)) {
+						this.disposeResource(id);
 						this.resourceFingerprints.delete(id);
-						this.textureCache.delete(id);
-						this.loadingTextures.delete(id);
-						this.videoEntries.delete(id);
 					}
 				}
 			}
@@ -569,6 +565,26 @@ class ExternalRenderer {
 		container.addChild(sprite);
 		container.addChild(mask);
 		sprite.mask = mask;
+	}
+
+	private disposeResource(id: string): void {
+		const videoEntry = this.videoEntries.get(id);
+		if (videoEntry) {
+			videoEntry.element.pause();
+			videoEntry.element.removeAttribute('src');
+			videoEntry.element.load();
+			videoEntry.source.destroy();
+		}
+		const texture = this.textureCache.get(id);
+		if (texture) {
+			texture.destroy();
+		}
+		destroyStlEntry(id);
+		this.textureCache.delete(id);
+		this.loadingTextures.delete(id);
+		this.videoEntries.delete(id);
+		this.colorEntries.delete(id);
+		this.textEntries.delete(id);
 	}
 
 	private loadTextureAsync(resource: ResourceData): void {

@@ -36,6 +36,9 @@ export class MaskPositionModal extends HTMLElement {
 	}
 
 	private showMultiple(shapeIds: string[], forceMode?: 'masked' | 'mapped', group = false): void {
+		// Clean up previous session if still open
+		this.hide();
+
 		const shapes = shapeIds.map(id => state.getShapes().find(s => s.id === id)).filter(Boolean) as ShapeData[];
 		if (shapes.length === 0) return;
 
@@ -50,6 +53,8 @@ export class MaskPositionModal extends HTMLElement {
 		this.mode = forceMode ?? 'masked';
 		this.offset = { ...(firstShape.resourceOffset ?? { x: 0, y: 0 }) };
 		this.draggingShapeId = null;
+		this.dragging = false;
+		this.panning = false;
 
 		// Init per-shape offsets for group mapped mode
 		this.shapeOffsets.clear();
@@ -249,8 +254,16 @@ export class MaskPositionModal extends HTMLElement {
 			resEl.style.transformOrigin = '0 0';
 		}
 
+		// Canvas renderer uses: sprite.x = bounds.x + offset.x (masked) or bounds.x - offset.x (mapped)
+		// So offset is relative to shape bounds origin, not center.
+		// In the modal, we center the shapes in the viewport, then position the resource accordingly.
+
+		// Translate to center shapes in viewport
+		const shapesCenterX = bounds.x + bounds.w / 2;
+		const shapesCenterY = bounds.y + bounds.h / 2;
+
 		if (this.isGroup && this.mode === 'mapped') {
-			// Group mapped: resource centered, each shape positioned individually
+			// Group mapped: resource fixed at center, each shape positioned individually
 			const resTransX = viewCenterX - bounds.w / 2;
 			const resTransY = viewCenterY - bounds.h / 2;
 			resWrap.style.transform = `scale(${this.viewZoom}) translate(${resTransX + this.viewPan.x}px, ${resTransY + this.viewPan.y}px)`;
@@ -259,34 +272,39 @@ export class MaskPositionModal extends HTMLElement {
 			this.querySelectorAll<HTMLElement>('[data-drag-shape]').forEach(el => {
 				const shapeId = el.dataset.dragShape!;
 				const shapeOffset = this.shapeOffsets.get(shapeId) ?? { x: 0, y: 0 };
-				// Shape moves by negative offset (visually drag shape on resource)
-				const tx = viewCenterX - (bounds.x + bounds.w / 2) - shapeOffset.x;
-				const ty = viewCenterY - (bounds.y + bounds.h / 2) - shapeOffset.y;
+				const tx = viewCenterX - shapesCenterX - shapeOffset.x;
+				const ty = viewCenterY - shapesCenterY - shapeOffset.y;
 				el.style.transform = `scale(${this.viewZoom}) translate(${tx + this.viewPan.x}px, ${ty + this.viewPan.y}px)`;
 			});
 		} else {
 			const shapesWrap = this.querySelector('#mask-shapes-wrap') as HTMLElement;
 			if (!shapesWrap) return;
 
-			let shapesTransX: number, shapesTransY: number;
+			// Shapes are always centered in the viewport
+			const shapesTransX = viewCenterX - shapesCenterX;
+			const shapesTransY = viewCenterY - shapesCenterY;
+
 			let resTransX: number, resTransY: number;
 
 			if (this.mode === 'mapped') {
-				// Single mapped: resource centered, shape moves
+				// Mapped: resource fixed, shapes move by -offset
+				// Canvas does: sprite.x = bounds.x - offset.x
+				// So resource stays at bounds origin, shape visual shifts by -offset
 				resTransX = viewCenterX - bounds.w / 2;
 				resTransY = viewCenterY - bounds.h / 2;
-				shapesTransX = viewCenterX - (bounds.x + bounds.w / 2) - this.offset.x;
-				shapesTransY = viewCenterY - (bounds.y + bounds.h / 2) - this.offset.y;
+				const mappedShapesTransX = shapesTransX - this.offset.x;
+				const mappedShapesTransY = shapesTransY - this.offset.y;
+				shapesWrap.style.transform = `scale(${this.viewZoom}) translate(${mappedShapesTransX + this.viewPan.x}px, ${mappedShapesTransY + this.viewPan.y}px)`;
 			} else {
-				// Masked: shapes centered, resource moves
-				shapesTransX = viewCenterX - (bounds.x + bounds.w / 2);
-				shapesTransY = viewCenterY - (bounds.y + bounds.h / 2);
-				resTransX = shapesTransX + this.offset.x;
-				resTransY = shapesTransY + this.offset.y;
+				// Masked: shapes fixed, resource moves by +offset
+				// Canvas does: sprite.x = bounds.x + offset.x
+				// Resource origin is at bounds.x + offset, so in modal it moves relative to shape position
+				resTransX = shapesTransX + bounds.x + this.offset.x;
+				resTransY = shapesTransY + bounds.y + this.offset.y;
+				shapesWrap.style.transform = `scale(${this.viewZoom}) translate(${shapesTransX + this.viewPan.x}px, ${shapesTransY + this.viewPan.y}px)`;
 			}
 
 			resWrap.style.transform = `scale(${this.viewZoom}) translate(${resTransX + this.viewPan.x}px, ${resTransY + this.viewPan.y}px)`;
-			shapesWrap.style.transform = `scale(${this.viewZoom}) translate(${shapesTransX + this.viewPan.x}px, ${shapesTransY + this.viewPan.y}px)`;
 		}
 
 		const display = this.querySelector('#mask-offset-display');
