@@ -14,7 +14,7 @@ interface ProjectConfig {
 	timelineDuration?: number;
 	groups?: Record<string, { name: string; shapeIds: string[]; animation?: GroupAnimationOptions }>;
 	projectorConfigs?: Record<number, { screenId: number | null }>;
-	projectorDisplayOptions?: Record<number, { showOutline: boolean; showPoints: boolean; showGrid: boolean; showFace: boolean }>;
+	projectorDisplayOptions?: Record<number, { showOutline: boolean; showPoints: boolean; showGrid: boolean; showFace: boolean; showCursor: boolean }>;
 	shapeTemplates?: Array<{ id: string; name: string; points: Point[] }>;
 	cues?: CueData[];
 }
@@ -54,7 +54,7 @@ class StateManager {
 	externalShowOutline = false;
 	externalShowPoints = false;
 	externalShowGrid = false;
-	projectorDisplayOptions: Map<number, { showOutline: boolean; showPoints: boolean; showGrid: boolean; showFace: boolean }> = new Map();
+	projectorDisplayOptions: Map<number, { showOutline: boolean; showPoints: boolean; showGrid: boolean; showFace: boolean; showCursor: boolean }> = new Map();
 	projectorConfigs: Map<number, { screenId: number | null }> = new Map();
 	private nextProjectorId = 1;
 	audioSourceId: string | null = null;
@@ -63,6 +63,7 @@ class StateManager {
 	private cues: CueData[] = [];
 	activeCueId: string | null = null;
 	midiLearnCueId: string | null = null;
+	cursorPosition: Point | null = null;
 
 	subscribe(listener: Listener): () => void {
 		this.listeners.add(listener);
@@ -97,7 +98,7 @@ class StateManager {
 			};
 		}
 
-		const projectorDisplay: Record<number, { showOutline: boolean; showPoints: boolean; showGrid: boolean; showFace: boolean }> = {};
+		const projectorDisplay: Record<number, { showOutline: boolean; showPoints: boolean; showGrid: boolean; showFace: boolean; showCursor: boolean }> = {};
 		for (const [id, opts] of this.projectorDisplayOptions) {
 			projectorDisplay[id] = opts;
 		}
@@ -114,6 +115,7 @@ class StateManager {
 			audioAboveThreshold: this._audioAboveThreshold,
 			midiBpm: this._midiBpm,
 			midiActive: this._midiActive,
+			cursorPosition: this.cursorPosition,
 		});
 		window.promap.syncExternal(data);
 	}
@@ -123,7 +125,7 @@ class StateManager {
 	addProjector(): number {
 		const id = this.nextProjectorId++;
 		this.projectorConfigs.set(id, { screenId: null });
-		this.projectorDisplayOptions.set(id, { showOutline: false, showPoints: false, showGrid: false, showFace: false });
+		this.projectorDisplayOptions.set(id, { showOutline: true, showPoints: true, showGrid: true, showFace: true, showCursor: true });
 		this.notify();
 		return id;
 	}
@@ -152,7 +154,7 @@ class StateManager {
 		await window.promap.openExternalWindow(projectorId, screenId);
 		this.openProjectors.add(projectorId);
 		if (!this.projectorDisplayOptions.has(projectorId)) {
-			this.projectorDisplayOptions.set(projectorId, { showOutline: false, showPoints: false, showGrid: false, showFace: false });
+			this.projectorDisplayOptions.set(projectorId, { showOutline: true, showPoints: true, showGrid: true, showFace: true, showCursor: true });
 		}
 		this.externalOpen = true;
 		setTimeout(() => this.syncExternal(), 500);
@@ -194,7 +196,7 @@ class StateManager {
 		this[key] = value;
 		// Apply to all open projectors
 		for (const id of this.openProjectors) {
-			const opts = this.projectorDisplayOptions.get(id) ?? { showOutline: false, showPoints: false, showGrid: false, showFace: false };
+			const opts = this.projectorDisplayOptions.get(id) ?? { showOutline: true, showPoints: true, showGrid: true, showFace: true, showCursor: true };
 			if (key === 'externalShowOutline') opts.showOutline = value;
 			else if (key === 'externalShowPoints') opts.showPoints = value;
 			else if (key === 'externalShowGrid') opts.showGrid = value;

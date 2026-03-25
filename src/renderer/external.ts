@@ -20,12 +20,13 @@ interface ExternalState {
 	showOutline: boolean;
 	showPoints: boolean;
 	showGrid: boolean;
-	projectorDisplay?: Record<number, { showOutline: boolean; showPoints: boolean; showGrid: boolean; showFace: boolean }>;
+	projectorDisplay?: Record<number, { showOutline: boolean; showPoints: boolean; showGrid: boolean; showFace: boolean; showCursor: boolean }>;
 	groups: Record<string, GroupState>;
 	audioLevel?: number;
 	audioAboveThreshold?: boolean;
 	midiBpm?: number;
 	midiActive?: boolean;
+	cursorPosition?: { x: number; y: number } | null;
 }
 
 const OUTLINE_COLOR = 0xffffff;
@@ -50,6 +51,7 @@ class ExternalRenderer {
 	private resourceFingerprints: Map<string, string> = new Map();
 	private waveFilterCache: Map<string, WaveFilter> = new Map();
 	private glitchFilterCache: Map<string, GlitchFilter> = new Map();
+	private cursorGraphic: Graphics;
 
 	constructor(app: Application, projectorId = 1) {
 		this.app = app;
@@ -57,8 +59,11 @@ class ExternalRenderer {
 
 		this.gridContainer = new Container();
 		this.shapesLayer = new Container();
+		this.cursorGraphic = new Graphics();
+		this.cursorGraphic.visible = false;
 		this.app.stage.addChild(this.gridContainer);
 		this.app.stage.addChild(this.shapesLayer);
+		this.app.stage.addChild(this.cursorGraphic);
 
 		this.app.ticker.add(() => this.tick());
 
@@ -160,6 +165,27 @@ class ExternalRenderer {
 
 		// Run animation locally every frame
 		this.applyAnimations();
+
+		// Update phantom cursor (respects per-projector showCursor toggle)
+		const projOpts = this.currentState?.projectorDisplay?.[this.projectorId];
+		const showCursor = projOpts?.showCursor ?? true;
+		const cursor = showCursor ? this.currentState?.cursorPosition : null;
+		if (cursor) {
+			this.cursorGraphic.clear();
+			this.cursorGraphic.setStrokeStyle({ width: 1.5, color: 0xffffff, alpha: 0.7 });
+			// Crosshair lines
+			this.cursorGraphic.moveTo(cursor.x - 10, cursor.y);
+			this.cursorGraphic.lineTo(cursor.x + 10, cursor.y);
+			this.cursorGraphic.moveTo(cursor.x, cursor.y - 10);
+			this.cursorGraphic.lineTo(cursor.x, cursor.y + 10);
+			this.cursorGraphic.stroke();
+			// Center dot
+			this.cursorGraphic.circle(cursor.x, cursor.y, 2);
+			this.cursorGraphic.fill({ color: 0xffffff, alpha: 0.9 });
+			this.cursorGraphic.visible = true;
+		} else {
+			this.cursorGraphic.visible = false;
+		}
 	}
 
 	private rebuild(): void {

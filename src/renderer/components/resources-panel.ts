@@ -286,7 +286,7 @@ export class ResourcesPanel extends HTMLElement {
 		} else {
 			projectorsHtml = projectorIds.map(id => {
 				const isOpen = state.openProjectors.has(id);
-				const opts = state.projectorDisplayOptions.get(id) ?? { showOutline: false, showPoints: false, showGrid: false, showFace: false };
+				const opts = state.projectorDisplayOptions.get(id) ?? { showOutline: true, showPoints: true, showGrid: true, showFace: true, showCursor: true };
 				const assigned = shapes.filter(s => s.projector === id);
 				const config = state.projectorConfigs.get(id);
 				return `
@@ -313,6 +313,7 @@ export class ResourcesPanel extends HTMLElement {
 							<label class="text-xs text-neutral-300 flex items-center gap-1.5"><input type="checkbox" data-proj-opt="${id}-showPoints" ${opts.showPoints ? 'checked' : ''} class="accent-cyan-500"> Points</label>
 							<label class="text-xs text-neutral-300 flex items-center gap-1.5"><input type="checkbox" data-proj-opt="${id}-showGrid" ${opts.showGrid ? 'checked' : ''} class="accent-cyan-500"> Grid</label>
 							<label class="text-xs text-neutral-300 flex items-center gap-1.5"><input type="checkbox" data-proj-opt="${id}-showFace" ${opts.showFace ? 'checked' : ''} class="accent-cyan-500"> Face</label>
+							<label class="text-xs text-neutral-300 flex items-center gap-1.5"><input type="checkbox" data-proj-opt="${id}-showCursor" ${opts.showCursor ? 'checked' : ''} class="accent-cyan-500"> Cursor</label>
 						</div>
 						<div class="space-y-0.5 max-h-24 overflow-y-auto min-h-6">
 							${assigned.length > 0 ? assigned.map(s => `
@@ -556,7 +557,7 @@ export class ResourcesPanel extends HTMLElement {
 					const parts = el.dataset.projOpt!.split('-');
 					const id = parseInt(parts[0]);
 					const key = parts.slice(1).join('-');
-					const opts = state.projectorDisplayOptions.get(id) ?? { showOutline: false, showPoints: false, showGrid: false, showFace: false };
+					const opts = state.projectorDisplayOptions.get(id) ?? { showOutline: true, showPoints: true, showGrid: true, showFace: true, showCursor: true };
 					(opts as Record<string, boolean>)[key] = el.checked;
 					state.projectorDisplayOptions.set(id, opts);
 					state.syncExternal();
