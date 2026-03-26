@@ -64,6 +64,7 @@ export class CanvasManager {
   private zoom = 1;
   private textureCache: Map<string, Texture> = new Map();
   private videoEntries: Map<string, VideoEntry> = new Map();
+  private cameraStreams: Map<string, MediaStream> = new Map();
   private textEntries: Map<string, TextEntry> = new Map();
   private colorEntries: Map<string, ColorEntry> = new Map();
   private loadingTextures: Set<string> = new Set();
@@ -920,6 +921,30 @@ export class CanvasManager {
       video.addEventListener('error', () => {
         this.loadingTextures.delete(resource.id);
       });
+    } else if (resource.type === 'camera') {
+      navigator.mediaDevices.getUserMedia({
+        video: { deviceId: { exact: resource.src } },
+      }).then(stream => {
+        const video = document.createElement('video');
+        video.srcObject = stream;
+        video.muted = true;
+        video.playsInline = true;
+        video.autoplay = true;
+
+        video.addEventListener('loadeddata', () => {
+          const source = new VideoSource({ resource: video, autoPlay: true });
+          const texture = new Texture({ source });
+          this.videoEntries.set(resource.id, { element: video, source, texture });
+          this.cameraStreams.set(resource.id, stream);
+          this.textureCache.set(resource.id, texture);
+          this.loadingTextures.delete(resource.id);
+          this.render();
+        });
+
+        video.play().catch(() => {});
+      }).catch(() => {
+        this.loadingTextures.delete(resource.id);
+      });
     } else if (resource.type === 'text' && resource.textOptions) {
       const entry = this.createTextEntry(resource.textOptions);
       this.textEntries.set(resource.id, entry);
@@ -1289,6 +1314,11 @@ export class CanvasManager {
       videoEntry.element.load();
       videoEntry.source.destroy();
     }
+    const stream = this.cameraStreams.get(resourceId);
+    if (stream) {
+      stream.getTracks().forEach(t => t.stop());
+      this.cameraStreams.delete(resourceId);
+    }
     const texture = this.textureCache.get(resourceId);
     if (texture) {
       texture.destroy();
@@ -1308,12 +1338,16 @@ export class CanvasManager {
       entry.element.load();
       entry.source.destroy();
     }
+    for (const stream of this.cameraStreams.values()) {
+      stream.getTracks().forEach(t => t.stop());
+    }
     for (const texture of this.textureCache.values()) {
       texture.destroy();
     }
     this.textureCache.clear();
     this.loadingTextures.clear();
     this.videoEntries.clear();
+    this.cameraStreams.clear();
     this.textEntries.clear();
     this.colorEntries.clear();
   }

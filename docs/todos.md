@@ -109,6 +109,15 @@
 - [x] Active cue highlighting
 - [x] Cues persist in save/load
 
+## Camera / OBS Feed
+
+- [x] Camera resource type with getUserMedia capture
+- [x] Video device enumeration and picker UI
+- [x] OBS Virtual Camera support (any video input device)
+- [x] Live feed rendering inside shapes with masking
+- [x] Stream cleanup on resource removal
+- [x] Works on both canvas editor and external projectors
+
 ## STL 3D Models
 
 - [x] Binary and ASCII STL file parsing

@@ -95,6 +95,7 @@ export class ResourcesPanel extends HTMLElement {
 				<div class="flex gap-1.5">
 					<button id="btn-add-svg-shape" class="flex-1 px-2 py-1.5 text-xs bg-neutral-800 hover:bg-neutral-700 rounded border border-neutral-600 text-neutral-300">+ SVG Shape</button>
 					<button id="btn-add-stl" class="flex-1 px-2 py-1.5 text-xs bg-neutral-800 hover:bg-neutral-700 rounded border border-neutral-600 text-neutral-300">+ 3D Model</button>
+					<button id="btn-add-camera" class="flex-1 px-2 py-1.5 text-xs bg-neutral-800 hover:bg-neutral-700 rounded border border-neutral-600 text-neutral-300">+ Camera</button>
 				</div>
 			</div>
 			<div id="resources-list" class="flex-1 overflow-y-auto p-3">
@@ -437,6 +438,60 @@ export class ResourcesPanel extends HTMLElement {
 					}
 				});
 				input.click();
+			});
+
+			this.querySelector('#btn-add-camera')?.addEventListener('click', async () => {
+				try {
+					// Request permission first
+					await navigator.mediaDevices.getUserMedia({ video: true }).then(s => s.getTracks().forEach(t => t.stop()));
+					const devices = await navigator.mediaDevices.enumerateDevices();
+					const videoDevices = devices.filter(d => d.kind === 'videoinput');
+					if (videoDevices.length === 0) return;
+
+					if (videoDevices.length === 1) {
+						state.addResource({
+							name: videoDevices[0].label || 'Camera',
+							type: 'camera',
+							src: videoDevices[0].deviceId,
+						});
+					} else {
+						// Show picker for multiple devices
+						const pick = document.createElement('div');
+						pick.className = 'fixed inset-0 z-50 flex items-center justify-center';
+						pick.innerHTML = `
+							<div class="absolute inset-0 bg-black/60" data-cam-close></div>
+							<div class="relative bg-neutral-900 border border-neutral-700 rounded-lg p-4 min-w-64">
+								<h3 class="text-sm font-semibold text-neutral-200 mb-3">Select Camera</h3>
+								<div class="space-y-1">
+									${videoDevices.map(d => `
+										<button data-cam-id="${d.deviceId}" class="w-full px-3 py-2 text-xs text-left bg-neutral-800 hover:bg-neutral-700 rounded border border-neutral-600 text-neutral-300">${d.label || 'Camera'}</button>
+									`).join('')}
+								</div>
+								<button data-cam-close class="mt-3 px-3 py-1 text-xs bg-neutral-800 hover:bg-neutral-700 rounded border border-neutral-600 text-neutral-400 w-full">Cancel</button>
+							</div>
+						`;
+						document.body.appendChild(pick);
+
+						pick.querySelectorAll<HTMLElement>('[data-cam-id]').forEach(btn => {
+							btn.addEventListener('click', () => {
+								const device = videoDevices.find(d => d.deviceId === btn.dataset.camId);
+								if (device) {
+									state.addResource({
+										name: device.label || 'Camera',
+										type: 'camera',
+										src: device.deviceId,
+									});
+								}
+								pick.remove();
+							});
+						});
+						pick.querySelectorAll('[data-cam-close]').forEach(el => {
+							el.addEventListener('click', () => pick.remove());
+						});
+					}
+				} catch {
+					// Permission denied or no cameras
+				}
 			});
 		}
 
@@ -1149,8 +1204,8 @@ export class ResourcesPanel extends HTMLElement {
 
 	private renderItem(r: ResourceData): string {
 		const thumbSrc = r.thumbnail || r.src;
-		const hasThumb = thumbSrc && thumbSrc.length > 0 && r.type !== 'stl';
-		const icon = r.type === 'stl' ? '3D' : r.type === 'color' ? 'C' : 'T';
+		const hasThumb = thumbSrc && thumbSrc.length > 0 && r.type !== 'stl' && r.type !== 'camera';
+		const icon = r.type === 'stl' ? '3D' : r.type === 'camera' ? '📷' : r.type === 'color' ? 'C' : 'T';
 
 		return `
 			<div class="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-neutral-800 cursor-grab mb-1 group" draggable="true" data-resource-id="${r.id}">

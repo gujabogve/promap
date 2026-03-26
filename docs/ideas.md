@@ -2,7 +2,7 @@
 
 ## Resources
 
-- OBS feed integration as a live video source
+- ~~OBS feed integration as a live video source~~ — Implemented via camera resource type (captures any video input device including OBS Virtual Camera)
 
 ## Output
 

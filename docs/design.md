@@ -46,6 +46,7 @@ Dark themed UI throughout. Dark neutral backgrounds with subtle borders and mute
   - **Color** — modal with three modes: solid (color picker), gradient (linear/radial, angle, multiple stops), animated (color keyframes at % positions, duration, easing, loop). Live preview with animation.
   - **STL 3D Models** — binary and ASCII STL file upload, rendered with THREE.js to PixiJS canvas texture, auto-centered geometry with lighting, configurable rotation speed per shape.
   - **SVG Shapes** — import SVG files to create custom polygon shapes. Parses paths, polygons, polylines, rects, circles, ellipses. Normalizes to shape size, simplifies to max 64 points.
+  - **Camera / OBS** — live video input from webcam or OBS Virtual Camera. "+ Camera" button enumerates video devices, user selects from picker. Renders live feed inside shapes like any video resource. Stream cleanup on resource removal.
 - Media library list with thumbnails, drag to assign to shapes
 - Remove resources with X button
 - Double-click text/color resources to edit

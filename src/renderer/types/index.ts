@@ -20,7 +20,7 @@ export interface ShapeEffects {
 
 export type ShapeType = 'circle' | 'triangle' | 'square' | 'n-shape';
 
-export type ResourceType = 'video' | 'image' | 'text' | 'color' | 'stl';
+export type ResourceType = 'video' | 'image' | 'text' | 'color' | 'stl' | 'camera';
 
 export type MarqueeDirection = 'left' | 'right' | 'up' | 'down';
 export type TextAlign = 'left' | 'center' | 'right';

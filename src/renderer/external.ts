@@ -40,6 +40,7 @@ class ExternalRenderer {
 	private videoEntries: Map<string, { element: HTMLVideoElement; source: VideoSource; texture: Texture }> = new Map();
 	private textEntries: Map<string, { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D; source: CanvasSource; texture: Texture; options: TextOptions; offset: number; width: number; textWidth: number }> = new Map();
 	private colorEntries: Map<string, { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D; source: CanvasSource; texture: Texture; options: ColorOptions; startTime: number }> = new Map();
+	private cameraStreams: Map<string, MediaStream> = new Map();
 	private loadingTextures: Set<string> = new Set();
 	private currentState: ExternalState | null = null;
 
@@ -601,6 +602,11 @@ class ExternalRenderer {
 			videoEntry.element.load();
 			videoEntry.source.destroy();
 		}
+		const stream = this.cameraStreams.get(id);
+		if (stream) {
+			stream.getTracks().forEach(t => t.stop());
+			this.cameraStreams.delete(id);
+		}
 		const texture = this.textureCache.get(id);
 		if (texture) {
 			texture.destroy();
@@ -643,6 +649,28 @@ class ExternalRenderer {
 				this.needsRebuild = true;
 			});
 			video.addEventListener('error', () => this.loadingTextures.delete(resource.id));
+		} else if (resource.type === 'camera') {
+			navigator.mediaDevices.getUserMedia({
+				video: { deviceId: { exact: resource.src } },
+			}).then(stream => {
+				const video = document.createElement('video');
+				video.srcObject = stream;
+				video.muted = true;
+				video.playsInline = true;
+				video.autoplay = true;
+				video.addEventListener('loadeddata', () => {
+					const source = new VideoSource({ resource: video, autoPlay: true });
+					const texture = new Texture({ source });
+					this.videoEntries.set(resource.id, { element: video, source, texture });
+					this.cameraStreams.set(resource.id, stream);
+					this.textureCache.set(resource.id, texture);
+					this.loadingTextures.delete(resource.id);
+					this.needsRebuild = true;
+				});
+				video.play().catch(() => {});
+			}).catch(() => {
+				this.loadingTextures.delete(resource.id);
+			});
 		} else if (resource.type === 'text' && resource.textOptions) {
 			this.textureCache.set(resource.id, this.createTextTexture(resource.textOptions, resource.id));
 			this.loadingTextures.delete(resource.id);
