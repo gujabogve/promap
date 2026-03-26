@@ -25,6 +25,13 @@ export interface PromapAPI {
 	prolinkRunning: () => Promise<boolean>;
 	onProlinkStatus: (callback: (status: CDJStatusData) => void) => void;
 	onProlinkDeviceFound: (callback: (device: { deviceId: number; deviceName: string }) => void) => void;
+	// Recording
+	startRecording: (projectorId: number) => Promise<boolean>;
+	stopRecording: (projectorId: number) => Promise<boolean>;
+	isRecording: (projectorId: number) => Promise<boolean>;
+	saveVideoBlob: (data: Uint8Array) => Promise<boolean>;
+	onStartRecording: (callback: () => void) => void;
+	onStopRecording: (callback: () => void) => void;
 	// Native renderer
 	toggleNativeRenderer: () => Promise<boolean>;
 	isNativeRenderer: () => Promise<boolean>;

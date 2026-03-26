@@ -6,7 +6,7 @@
 
 ## Output
 
-- Record / export projector output to video file
+- ~~Record / export projector output to video file~~ — Implemented via MediaRecorder API on projector canvas (WebM/VP9, per-projector record button)
 
 ## Timecode Synchronization (partially implemented)
 

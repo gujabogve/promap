@@ -29,6 +29,17 @@ contextBridge.exposeInMainWorld('promap', {
 	onProlinkDeviceFound: (callback: (device: unknown) => void) => {
 		ipcRenderer.on('prolink-device-found', (_event, device) => callback(device));
 	},
+	// Recording
+	startRecording: (projectorId: number) => ipcRenderer.invoke('request-start-recording', projectorId),
+	stopRecording: (projectorId: number) => ipcRenderer.invoke('request-stop-recording', projectorId),
+	isRecording: (projectorId: number) => ipcRenderer.invoke('is-recording', projectorId),
+	saveVideoBlob: (data: Uint8Array) => ipcRenderer.invoke('save-video-blob', data),
+	onStartRecording: (callback: () => void) => {
+		ipcRenderer.on('do-start-recording', () => callback());
+	},
+	onStopRecording: (callback: () => void) => {
+		ipcRenderer.on('do-stop-recording', () => callback());
+	},
 	// Native renderer
 	toggleNativeRenderer: () => ipcRenderer.invoke('toggle-native-renderer'),
 	isNativeRenderer: () => ipcRenderer.invoke('is-native-renderer'),

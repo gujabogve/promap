@@ -31,6 +31,7 @@ const externalWindows: Map<number, BrowserWindow> = new Map();
 const nativeProcesses: Map<number, ChildProcess> = new Map();
 let nextProjectorId = 1;
 let useNativeRenderer = true;
+const recordingProjectors: Set<number> = new Set();
 
 function getNativeRendererPath(): string | null {
 	const paths = [
@@ -359,6 +360,43 @@ function setupIpc(): void {
 
 	ipcMain.handle('is-native-renderer', () => {
 		return useNativeRenderer;
+	});
+
+	// Recording
+	ipcMain.handle('request-start-recording', (_event, projectorId: number) => {
+		const win = externalWindows.get(projectorId);
+		if (win && !win.isDestroyed()) {
+			win.webContents.send('do-start-recording');
+			recordingProjectors.add(projectorId);
+			return true;
+		}
+		return false;
+	});
+
+	ipcMain.handle('request-stop-recording', (_event, projectorId: number) => {
+		const win = externalWindows.get(projectorId);
+		if (win && !win.isDestroyed()) {
+			win.webContents.send('do-stop-recording');
+			recordingProjectors.delete(projectorId);
+			return true;
+		}
+		return false;
+	});
+
+	ipcMain.handle('is-recording', (_event, projectorId: number) => {
+		return recordingProjectors.has(projectorId);
+	});
+
+	ipcMain.handle('save-video-blob', async (_event, data: Uint8Array) => {
+		const win = getWindow();
+		const { canceled, filePath } = await dialog.showSaveDialog(win!, {
+			title: 'Save Recording',
+			defaultPath: `promap-recording-${Date.now()}.webm`,
+			filters: [{ name: 'WebM Video', extensions: ['webm'] }],
+		});
+		if (canceled || !filePath) return false;
+		await writeFile(filePath, Buffer.from(data));
+		return true;
 	});
 
 	ipcMain.handle('upload-media', async () => {

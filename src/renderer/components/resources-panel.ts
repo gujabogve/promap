@@ -11,6 +11,8 @@ import { createShapeFromSVGFile } from '../utils/svg-parser';
 export class ResourcesPanel extends HTMLElement {
 	private meterRafId: number | null = null;
 	private activeTab: 'resources' | 'download' | 'audio' | 'djlink' | 'cues' | 'displays' = 'resources';
+	private recordingStartTimes: Map<number, number> = new Map();
+	private recordingTimerIds: Map<number, ReturnType<typeof setInterval>> = new Map();
 
 	connectedCallback(): void {
 		this.className = 'block bg-neutral-900 shrink-0 overflow-visible relative';
@@ -316,6 +318,9 @@ export class ResourcesPanel extends HTMLElement {
 							<label class="text-xs text-neutral-300 flex items-center gap-1.5"><input type="checkbox" data-proj-opt="${id}-showFace" ${opts.showFace ? 'checked' : ''} class="accent-cyan-500"> Face</label>
 							<label class="text-xs text-neutral-300 flex items-center gap-1.5"><input type="checkbox" data-proj-opt="${id}-showCursor" ${opts.showCursor ? 'checked' : ''} class="accent-cyan-500"> Cursor</label>
 						</div>
+						${isOpen ? `<button data-proj-record="${id}" class="w-full px-2 py-1 text-xs rounded border flex items-center justify-center gap-1.5 bg-neutral-800 hover:bg-neutral-700 border-neutral-600 text-neutral-300 mb-2">
+							<span class="inline-block w-2 h-2 rounded-full bg-red-500"></span> Record
+						</button>` : ''}
 						<div class="space-y-0.5 max-h-24 overflow-y-auto min-h-6">
 							${assigned.length > 0 ? assigned.map(s => `
 								<div class="flex items-center gap-1 text-xs text-neutral-400 cursor-grab px-1 py-0.5 rounded hover:bg-neutral-700" draggable="true" data-drag-shape-proj="${s.id}">
@@ -569,6 +574,45 @@ export class ResourcesPanel extends HTMLElement {
 					nativeChk.checked = enabled;
 				});
 			}
+
+			// Recording buttons
+			this.querySelectorAll<HTMLElement>('[data-proj-record]').forEach(btn => {
+				const projId = parseInt(btn.dataset.projRecord!);
+				window.promap.isRecording(projId).then(recording => {
+					if (recording) {
+						if (!this.recordingStartTimes.has(projId)) {
+							this.recordingStartTimes.set(projId, Date.now());
+						}
+						btn.classList.add('border-red-700', 'bg-red-900/30');
+						btn.classList.remove('border-neutral-600', 'bg-neutral-800');
+						const updateTimer = () => {
+							const elapsed = Math.floor((Date.now() - this.recordingStartTimes.get(projId)!) / 1000);
+							const min = String(Math.floor(elapsed / 60)).padStart(2, '0');
+							const sec = String(elapsed % 60).padStart(2, '0');
+							btn.innerHTML = `<span class="inline-block w-2 h-2 rounded-sm bg-red-500 animate-pulse"></span> Stop <span class="font-mono text-red-400">${min}:${sec}</span>`;
+						};
+						updateTimer();
+						const oldTimer = this.recordingTimerIds.get(projId);
+						if (oldTimer) clearInterval(oldTimer);
+						this.recordingTimerIds.set(projId, setInterval(updateTimer, 1000));
+					}
+				});
+				btn.addEventListener('click', async () => {
+					const recording = await window.promap.isRecording(projId);
+					if (recording) {
+						await window.promap.stopRecording(projId);
+						this.recordingStartTimes.delete(projId);
+						const timer = this.recordingTimerIds.get(projId);
+						if (timer) clearInterval(timer);
+						this.recordingTimerIds.delete(projId);
+					} else {
+						await window.promap.startRecording(projId);
+						this.recordingStartTimes.set(projId, Date.now());
+					}
+					this.renderPanel();
+					this.setupListeners();
+				});
+			});
 
 			// Add projector (config only, no window)
 			this.querySelector('#btn-add-projector')?.addEventListener('click', () => {

@@ -53,6 +53,8 @@ class ExternalRenderer {
 	private waveFilterCache: Map<string, WaveFilter> = new Map();
 	private glitchFilterCache: Map<string, GlitchFilter> = new Map();
 	private cursorGraphic: Graphics;
+	private mediaRecorder: MediaRecorder | null = null;
+	private recordedChunks: Blob[] = [];
 
 	constructor(app: Application, projectorId = 1) {
 		this.app = app;
@@ -100,6 +102,35 @@ class ExternalRenderer {
 			this.currentState = newState;
 			this.needsRebuild = true;
 		});
+
+		// Recording controls from main window
+		window.promap.onStartRecording(() => this.startRecording());
+		window.promap.onStopRecording(() => this.stopRecording());
+	}
+
+	private startRecording(): void {
+		if (this.mediaRecorder) return;
+		const canvas = this.app.canvas as HTMLCanvasElement;
+		const stream = canvas.captureStream(60);
+		this.recordedChunks = [];
+		this.mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
+		this.mediaRecorder.ondataavailable = (e) => {
+			if (e.data.size > 0) this.recordedChunks.push(e.data);
+		};
+		this.mediaRecorder.onstop = async () => {
+			const blob = new Blob(this.recordedChunks, { type: 'video/webm' });
+			const buffer = await blob.arrayBuffer();
+			window.promap.saveVideoBlob(new Uint8Array(buffer));
+			this.recordedChunks = [];
+			this.mediaRecorder = null;
+		};
+		this.mediaRecorder.start(1000); // Collect chunks every second
+	}
+
+	private stopRecording(): void {
+		if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+			this.mediaRecorder.stop();
+		}
 	}
 
 	private tick(): void {

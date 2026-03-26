@@ -168,8 +168,15 @@
 - [x] Beat detection from audio analysis
 - [x] Per-shape BPM sync (individual shapes, not just groups)
 
+## Recording / Export
+
+- [x] Record projector output to WebM video via MediaRecorder API
+- [x] Per-projector record/stop button in Displays tab
+- [x] Canvas captureStream at 60fps with VP9 codec
+- [x] Save dialog on stop with file picker
+
 ## Future
 
 - [ ] SMPTE/LTC timecode (audio signal decode)
-- [ ] OBS feed integration as live video source
-- [ ] Record / export projector output to video file
+- [x] ~~OBS feed integration as live video source~~ (camera resource type)
+- [x] ~~Record / export projector output to video file~~ (WebM recording)

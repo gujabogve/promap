@@ -205,6 +205,14 @@ Dark themed UI throughout. Dark neutral backgrounds with subtle borders and mute
 - Multiple windows supported (each runs independently with own projector ID)
 - Auto-closes when main window closes
 
+### Recording / Export
+
+- Per-projector record button in Displays tab
+- Records PixiJS canvas via `captureStream(60)` + `MediaRecorder` (WebM/VP9)
+- Chunks collected every second, assembled on stop
+- Save dialog with file picker on recording stop
+- Recording state tracked per projector with visual indicator (pulsing red)
+
 ### Native GPU Renderer (optional)
 
 - Rust + wgpu native binary for projector output (replaces Electron BrowserWindow)
