@@ -1,4 +1,5 @@
 import './types/promap-api';
+import './components/project-screen';
 import './components/app-shell';
 import './components/controls-panel';
 import './components/resources-panel';
@@ -42,9 +43,6 @@ document.addEventListener('keydown', (e) => {
 	} else if (e.ctrlKey && key === 's') {
 		e.preventDefault();
 		state.save();
-	} else if (e.ctrlKey && key === 'o') {
-		e.preventDefault();
-		state.load();
 	} else if (e.key === '?' || (e.key === '/' && e.shiftKey)) {
 		if (!isInputFocused()) {
 			e.preventDefault();

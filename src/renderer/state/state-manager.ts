@@ -1287,7 +1287,7 @@ class StateManager {
 	loadFromJson(json: string): void {
 		this.loadListeners.forEach(l => l());
 		const config = JSON.parse(json) as ProjectConfig;
-		this.shapes = config.shapes;
+		this.shapes = config.shapes ?? [];
 		this.resources = config.resources ?? [];
 		this.globalFps = config.globalFps ?? 30;
 		this.resolution = config.resolution ?? { x: 1920, y: 1080 };
@@ -1312,8 +1312,8 @@ class StateManager {
 		this.notify();
 	}
 
-	async save(): Promise<string | null> {
-		return window.promap.saveConfig(this.serialize());
+	async save(): Promise<boolean> {
+		return window.promap.saveProject(this.serialize());
 	}
 
 	async load(): Promise<boolean> {
@@ -1323,10 +1323,25 @@ class StateManager {
 		return true;
 	}
 
+	closeProject(): void {
+		this.loadListeners.forEach(l => l());
+		this.shapes = [];
+		this.resources = [];
+		this.keyframes = {};
+		this.groupKeyframes = {};
+		this.groups.clear();
+		this.cues = [];
+		this.selectedShapeId = null;
+		this.selectedGroupId = null;
+		this.timelineTime = 0;
+		this.timelinePlaying = false;
+		this.notify();
+	}
+
 	scheduleAutoSave(): void {
 		if (this.autoSaveTimer) clearTimeout(this.autoSaveTimer);
 		this.autoSaveTimer = setTimeout(() => {
-			window.promap.autoSave(this.serialize());
+			window.promap.saveProject(this.serialize());
 		}, 5000);
 	}
 

@@ -175,6 +175,17 @@
 - [x] Canvas captureStream at 60fps with VP9 codec
 - [x] Save dialog on stop with file picker
 
+## Project System
+
+- [x] Project-based save/load (folder per project in userData)
+- [x] Project screen on startup (new, recent, import)
+- [x] Auto-save to project directory (no dialog)
+- [x] Export project as .promap compressed archive
+- [x] Import .promap archive as new project
+- [x] Recent projects list (last 5)
+- [x] Close project returns to project screen
+- [x] Per-project media isolation
+
 ## Future
 
 - [ ] SMPTE/LTC timecode (audio signal decode)

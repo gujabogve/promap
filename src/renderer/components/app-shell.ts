@@ -8,6 +8,7 @@ export class AppShell extends HTMLElement {
 	private startSize = 0;
 
 	connectedCallback(): void {
+		this.classList.add('hidden');
 		this.innerHTML = `
 			<div class="h-screen w-screen flex flex-col">
 				<controls-panel></controls-panel>

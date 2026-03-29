@@ -50,14 +50,12 @@ export class ControlsPanel extends HTMLElement {
 		this.querySelector('#btn-redo')?.addEventListener('click', () => state.redo());
 
 		this.querySelector('#btn-save')?.addEventListener('click', () => state.save());
-		this.querySelector('#btn-load')?.addEventListener('click', async () => {
-			const loaded = await state.load();
-			if (loaded) {
-				fpsSlider.value = String(state.globalFps);
-				fpsValue.textContent = String(state.globalFps);
-				resWidth.value = String(state.resolution.x);
-				resHeight.value = String(state.resolution.y);
-			}
+		this.querySelector('#btn-export')?.addEventListener('click', () => window.promap.exportProject());
+		this.querySelector('#btn-close-project')?.addEventListener('click', async () => {
+			await state.save();
+			state.closeProject();
+			const projectScreen = document.querySelector('project-screen') as HTMLElement & { show(): void } | null;
+			projectScreen?.show();
 		});
 
 		window.promap.onExternalWindowClosed((projectorId: number) => {
@@ -139,8 +137,9 @@ export class ControlsPanel extends HTMLElement {
 				<img src="${titlebarLogo}" class="h-8 mr-2" alt="ProMap" draggable="false">
 				<div class="h-5 w-px bg-neutral-700"></div>
 
-				<button id="btn-save" class="px-2.5 py-1 text-xs bg-neutral-800 hover:bg-neutral-700 rounded border border-neutral-600 text-neutral-300">Save</button>
-				<button id="btn-load" class="px-2.5 py-1 text-xs bg-neutral-800 hover:bg-neutral-700 rounded border border-neutral-600 text-neutral-300">Load</button>
+				<button id="btn-save" class="px-2.5 py-1 text-xs bg-neutral-800 hover:bg-neutral-700 rounded border border-neutral-600 text-neutral-300" title="Save (Ctrl+S)">Save</button>
+				<button id="btn-export" class="px-2.5 py-1 text-xs bg-neutral-800 hover:bg-neutral-700 rounded border border-neutral-600 text-neutral-300" title="Export .promap">Export</button>
+				<button id="btn-close-project" class="px-2.5 py-1 text-xs bg-neutral-800 hover:bg-neutral-700 rounded border border-neutral-600 text-neutral-300" title="Close project">Close</button>
 				<div class="h-5 w-px bg-neutral-700"></div>
 				<button id="btn-undo" class="px-2.5 py-1 text-xs bg-neutral-800 hover:bg-neutral-700 rounded border border-neutral-600 text-neutral-300" title="Undo (Ctrl+Z)">↩</button>
 				<button id="btn-redo" class="px-2.5 py-1 text-xs bg-neutral-800 hover:bg-neutral-700 rounded border border-neutral-600 text-neutral-300" title="Redo (Ctrl+Shift+Z)">↪</button>

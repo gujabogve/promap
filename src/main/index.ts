@@ -1,7 +1,9 @@
 import { app, BrowserWindow, ipcMain, dialog, protocol, net, session, screen } from 'electron';
 import { join, extname, basename } from 'path';
-import { readFile, writeFile, copyFile, mkdir, stat } from 'fs/promises';
-import { createReadStream, existsSync } from 'fs';
+import { readFile, writeFile, copyFile, mkdir, stat, readdir, rm } from 'fs/promises';
+import { createReadStream, createWriteStream, existsSync } from 'fs';
+import archiver from 'archiver';
+import unzipper from 'unzipper';
 import { randomUUID } from 'crypto';
 import { spawn, ChildProcess } from 'child_process';
 import { autoUpdater } from 'electron-updater';
@@ -20,7 +22,10 @@ app.commandLine.appendSwitch('disable-software-rasterizer');
 app.commandLine.appendSwitch('use-angle', 'd3d11');
 app.commandLine.appendSwitch('use-gl', 'angle');
 
-const MEDIA_DIR = () => join(app.getPath('userData'), 'media');
+const PROJECTS_DIR = () => join(app.getPath('userData'), 'projects');
+const RECENT_PROJECTS_PATH = () => join(app.getPath('userData'), 'recent-projects.json');
+let activeProjectDir: string | null = null;
+const MEDIA_DIR = () => activeProjectDir ? join(activeProjectDir, 'media') : join(app.getPath('userData'), 'media');
 
 protocol.registerSchemesAsPrivileged([
 	{ scheme: 'media', privileges: { stream: true, bypassCSP: true, supportFetchAPI: true, corsEnabled: true } },
@@ -32,6 +37,16 @@ const nativeProcesses: Map<number, ChildProcess> = new Map();
 let nextProjectorId = 1;
 let useNativeRenderer = true;
 const recordingProjectors: Set<number> = new Set();
+
+async function updateRecentProjects(name: string): Promise<void> {
+	const path = RECENT_PROJECTS_PATH();
+	let recent: string[] = [];
+	if (existsSync(path)) {
+		recent = JSON.parse(await readFile(path, 'utf-8'));
+	}
+	recent = [name, ...recent.filter(n => n !== name)].slice(0, 5);
+	await writeFile(path, JSON.stringify(recent), 'utf-8');
+}
 
 function getNativeRendererPath(): string | null {
 	const paths = [
@@ -397,6 +412,128 @@ function setupIpc(): void {
 		if (canceled || !filePath) return false;
 		await writeFile(filePath, Buffer.from(data));
 		return true;
+	});
+
+	// ─── Project Management ─────────────────────────────────
+
+	ipcMain.handle('get-projects', async () => {
+		const dir = PROJECTS_DIR();
+		if (!existsSync(dir)) return [];
+		const entries = await readdir(dir, { withFileTypes: true });
+		const projects: { name: string; modifiedAt: number }[] = [];
+		for (const entry of entries) {
+			if (!entry.isDirectory()) continue;
+			const configPath = join(dir, entry.name, 'project.json');
+			if (existsSync(configPath)) {
+				const s = await stat(configPath);
+				projects.push({ name: entry.name, modifiedAt: s.mtimeMs });
+			}
+		}
+		return projects.sort((a, b) => b.modifiedAt - a.modifiedAt);
+	});
+
+	ipcMain.handle('create-project', async (_event, name: string) => {
+		const dir = join(PROJECTS_DIR(), name);
+		await mkdir(join(dir, 'media'), { recursive: true });
+		await writeFile(join(dir, 'project.json'), '{}', 'utf-8');
+		activeProjectDir = dir;
+		await updateRecentProjects(name);
+		return dir;
+	});
+
+	ipcMain.handle('open-project', async (_event, name: string) => {
+		const dir = join(PROJECTS_DIR(), name);
+		const configPath = join(dir, 'project.json');
+		if (!existsSync(configPath)) return null;
+		activeProjectDir = dir;
+		await updateRecentProjects(name);
+		const json = await readFile(configPath, 'utf-8');
+		return json;
+	});
+
+	ipcMain.handle('save-project', async (_event, json: string) => {
+		if (!activeProjectDir) return false;
+		await writeFile(join(activeProjectDir, 'project.json'), json, 'utf-8');
+		return true;
+	});
+
+	ipcMain.handle('delete-project', async (_event, name: string) => {
+		const dir = join(PROJECTS_DIR(), name);
+		if (existsSync(dir)) {
+			await rm(dir, { recursive: true, force: true });
+		}
+		return true;
+	});
+
+	ipcMain.handle('get-recent-projects', async () => {
+		const path = RECENT_PROJECTS_PATH();
+		if (!existsSync(path)) return [];
+		const json = await readFile(path, 'utf-8');
+		return JSON.parse(json) as string[];
+	});
+
+	ipcMain.handle('export-project', async () => {
+		if (!activeProjectDir) return false;
+		const win = getWindow();
+		const projectName = basename(activeProjectDir);
+		const { canceled, filePath } = await dialog.showSaveDialog(win!, {
+			title: 'Export Project',
+			defaultPath: `${projectName}.promap`,
+			filters: [{ name: 'ProMap Project', extensions: ['promap'] }],
+		});
+		if (canceled || !filePath) return false;
+
+		return new Promise<boolean>((resolve) => {
+			const output = createWriteStream(filePath);
+			const archive = archiver('zip', { zlib: { level: 5 } });
+			output.on('close', () => resolve(true));
+			archive.on('error', () => resolve(false));
+			archive.pipe(output);
+			archive.directory(activeProjectDir!, false);
+			archive.finalize();
+		});
+	});
+
+	ipcMain.handle('import-project', async () => {
+		const win = getWindow();
+		const { canceled, filePaths } = await dialog.showOpenDialog(win!, {
+			title: 'Import Project',
+			filters: [{ name: 'ProMap Project', extensions: ['promap'] }],
+			properties: ['openFile'],
+		});
+		if (canceled || filePaths.length === 0) return null;
+
+		const zipPath = filePaths[0];
+		// Derive project name from filename
+		let projectName = basename(zipPath, '.promap');
+		const destDir = join(PROJECTS_DIR(), projectName);
+
+		// If name exists, append number
+		let counter = 1;
+		let finalDir = destDir;
+		while (existsSync(finalDir)) {
+			finalDir = `${destDir} (${counter++})`;
+			projectName = basename(finalDir);
+		}
+
+		await mkdir(finalDir, { recursive: true });
+
+		await createReadStream(zipPath)
+			.pipe(unzipper.Extract({ path: finalDir }))
+			.promise();
+
+		activeProjectDir = finalDir;
+		await updateRecentProjects(projectName);
+
+		const configPath = join(finalDir, 'project.json');
+		if (existsSync(configPath)) {
+			return await readFile(configPath, 'utf-8');
+		}
+		return '{}';
+	});
+
+	ipcMain.handle('get-active-project', () => {
+		return activeProjectDir ? basename(activeProjectDir) : null;
 	});
 
 	ipcMain.handle('upload-media', async () => {

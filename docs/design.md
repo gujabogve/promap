@@ -239,13 +239,17 @@ Dark themed UI throughout. Dark neutral backgrounds with subtle borders and mute
 
 ## Config / Persistence
 
-- All state saved as JSON
-- Manual save: user-triggered, explicit file via native file dialog
-- Auto-save: separate file in Electron userData (5s debounce), never overwrites manual save
-- Load: restores full project state from JSON via native file dialog
-- Media files: copied to Electron userData/media/ on upload, served via `media://` custom protocol, survives save/load
-- Undo/redo history saved in config
-- Keyframes, timeline duration, groups (with animation config) saved in config
+### Project System
+- Each project is a folder in Electron's `userData/projects/` directory
+- Folder contains `project.json` (state) and `media/` subfolder (all project media)
+- **Startup screen**: shows "New Project", "Import", and recent projects list (last 5)
+- **Save** (Ctrl+S): writes directly to `project.json` in project folder (no dialog)
+- **Auto-save**: debounced 5s after any state change, writes to project folder
+- **Export**: zips project folder to `.promap` file (ZIP archive) via save dialog
+- **Import**: extracts `.promap` archive as new project folder
+- **Close Project**: saves and returns to project screen
+- Media files: copied to project's `media/` subfolder on upload, served via `media://` protocol
+- Undo/redo history, keyframes, timeline, groups, cues all saved in `project.json`
 
 ## Interaction Summary
 

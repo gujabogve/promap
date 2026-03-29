@@ -4,6 +4,11 @@ export interface UploadedMedia {
 	filename: string;
 }
 
+export interface ProjectInfo {
+	name: string;
+	modifiedAt: number;
+}
+
 export interface PromapAPI {
 	uploadMedia: () => Promise<UploadedMedia[]>;
 	saveMediaBlob: (data: Uint8Array, filename: string) => Promise<boolean>;
@@ -11,6 +16,16 @@ export interface PromapAPI {
 	loadConfig: () => Promise<string | null>;
 	autoSave: (json: string) => Promise<string>;
 	loadAutoSave: () => Promise<string | null>;
+	// Projects
+	getProjects: () => Promise<ProjectInfo[]>;
+	createProject: (name: string) => Promise<string>;
+	openProject: (name: string) => Promise<string | null>;
+	saveProject: (json: string) => Promise<boolean>;
+	deleteProject: (name: string) => Promise<boolean>;
+	getRecentProjects: () => Promise<string[]>;
+	exportProject: () => Promise<boolean>;
+	importProject: () => Promise<string | null>;
+	getActiveProject: () => Promise<string | null>;
 	openExternalWindow: (projectorId?: number, screenId?: number) => Promise<number>;
 	getScreens: () => Promise<ScreenInfo[]>;
 	closeExternalWindow: (projectorId?: number) => Promise<boolean>;
